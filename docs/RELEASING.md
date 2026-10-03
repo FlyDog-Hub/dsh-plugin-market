@@ -67,22 +67,57 @@ pwsh -File scripts\release.ps1 -SkipPush
 $env:HTTPS_PROXY='http://127.0.0.1:7890'; $env:HTTP_PROXY='http://127.0.0.1:7890'
 ```
 
-## 4. 发布到 npm（可选，需要你自己的凭据）
+## 4. 分发路径
 
-GitHub Release 只解决「下载得到包」；要让别人 `dsh plugin --profile web add dsh-plugin-market`
-直接装，需要发布到 npm。本机没有 npm 凭据，所以这一步要你来（或把你的 npm automation token 交给执行者）：
+### 4.1 从 GitHub Release 附件直接安装（今天就能用，已验证）
 
 ```powershell
-# 1) 登录（浏览器方式；token 方式用 --auth-type=legacy + --token）
-pnpm login
-# 2) 发布（pack 出来的内容就是 registry 上的内容）
+dsh plugin --profile web add https://github.com/Winnie-0721/dsh-plugin-market/releases/download/v1.0.0/dsh-plugin-market-1.0.0.tgz
+```
+
+`dsh plugin add` 的 spec 解析接受 `.tgz` URL（`parseInstallSpec` 的 tarball 形状），
+上面这条命令在全新 profile 上实测：**10.6 秒装完、bundle 已激活、`node_modules` 里有包**。
+这条路径不需要任何 npm 账号，也是本仓库当前唯一可用的「按名字以外」的分发方式。
+
+### 4.2 发布到 npm：**名字已被占用，不能直接用 `dsh-plugin-market`**
+
+`dsh-plugin-market` 在 npm 上属于**另一个项目**（实测）：
+
+| 项 | 值 |
+|---|---|
+| latest | `1.3.0`（共 4 个版本，首发 2026-08-14） |
+| maintainer | `fireguo`（hjrluobo2h@qq.com） |
+| repository | `https://github.com/veloce-ailab/dsh-plugin-market` |
+| description | Plugin market foundation with a standalone Web configuration editor for DeepSeek Harness |
+
+两条后果：
+
+1. **不能发布**：`pnpm publish` 会被 registry 以 `403 you do not have permission` 拒绝；
+2. **同机会撞行**：本包的 bundle 名就是 `dsh-plugin-market`。如果有人同时装了那个包，profile 里会出现两个同名
+   bundle → Loader 组合失败。要共存，必须先改名。
+
+**可选方案**（发布前的名字可用性均已实测，见下表）：
+
+| 方案 | 名字 | npm 可用性 | 代价 |
+|---|---|---|---|
+| A. 加 scope | `@winnie-0721/dsh-plugin-market` | 可用（需要你拥有该 scope） | 改 `package.json` 的 `name` → 安装身份变化 → 按 §1 的规则属于破坏兼容，要 `-Bump major` |
+| B. 换非 scoped 名 | `dsh-plugin-market-lite` / `dsh-market-x` / `dsh-market-rebuild` / `winnie-dsh-market` / `dshmarket2` | 均可用 | 同上 |
+| C. 只走 4.1 | 保持 `dsh-plugin-market` | — | 不能按名字装；与那个包同机冲突的风险仍在（文档需显著提示） |
+
+改名要同时改这几处（漏一处就会在运行时露出来）：`plugin-market/package.json` 的 `name`、
+`cordis.patch.yml` 的行 `name`、`lib/client.js` 里 `__ModuleLoader__.load({ id })`、
+`lib/index.js` 的 `PLUGIN_NAME`、README/文档里的安装命令，以及**已安装 profile 的重新安装**
+（`dsh plugin remove` 旧名 → `add` 新名）。改完用 `scripts/release.ps1 -Bump major` 发新版本号。
+
+### 4.3 真要发 npm 时的检查单
+
+```powershell
+pnpm login                                   # 或 pnpm config set //registry.npmjs.org/:_authToken=<token>
 cd plugin-market
 pnpm publish --access public --no-git-checks
 ```
 
-发布前自查：
-
+- 发布前确认名字可用：`https://registry.npmjs.org/<name>` 返回 404；
 - `pnpm pack` 后的 tarball 只含 `package/` 下的 13 个文件（lib、assets、cordis.patch.yml、README×2、CHANGELOG、LICENSE、package.json）；
-- `version` 没被占用：`pnpm view dsh-plugin-market version`（本仓库首次检查时该名字**未被占用**）；
-- 名字一旦发布就属于你，改名前要重新发并保留旧版；
-- 发布后建议立刻做一次真装：`dsh plugin --profile <新 profile> add dsh-plugin-market`，再启动宿主确认入口在侧边栏底部。
+- 版本号不可重用、不可覆盖——发错了只能往上加；
+- 发布后立刻真装一次：`dsh plugin --profile <新 profile> add <name>` 或直接 `add <tarball URL>`，启动宿主确认侧边栏底部入口还在。
