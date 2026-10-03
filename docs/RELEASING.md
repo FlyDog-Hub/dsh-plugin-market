@@ -72,7 +72,8 @@ $env:HTTPS_PROXY='http://127.0.0.1:7890'; $env:HTTP_PROXY='http://127.0.0.1:7890
 ### 4.1 从 GitHub Release 附件直接安装（今天就能用，已验证）
 
 ```powershell
-dsh plugin --profile web add https://github.com/Winnie-0721/dsh-plugin-market/releases/download/v1.0.0/dsh-plugin-market-1.0.0.tgz
+# 版本号换成当前 Release 的（历次 Release 见仓库 Releases 页）
+dsh plugin --profile web add https://github.com/Winnie-0721/dsh-plugin-market/releases/download/v1.0.2/dsh-plugin-market-1.0.2.tgz
 ```
 
 `dsh plugin add` 的 spec 解析接受 `.tgz` URL（`parseInstallSpec` 的 tarball 形状），
@@ -108,6 +109,23 @@ dsh plugin --profile web add https://github.com/Winnie-0721/dsh-plugin-market/re
 `cordis.patch.yml` 的行 `name`、`lib/client.js` 里 `__ModuleLoader__.load({ id })`、
 `lib/index.js` 的 `PLUGIN_NAME`、README/文档里的安装命令，以及**已安装 profile 的重新安装**
 （`dsh plugin remove` 旧名 → `add` 新名）。改完用 `scripts/release.ps1 -Bump major` 发新版本号。
+
+## 5. 发布之后：改动什么时候生效
+
+两个半的更新机制不同，发布说明里必须讲清楚，否则用户会以为「装了新版却还是旧行为」：
+
+| 改动位置 | 生效方式 | 实测证据 |
+|---|---|---|
+| **客户端半**（`lib/client.js`） | 宿主按文件元数据算出新的产物 rev 并推给页面，**无需重启、通常也无需刷新** | 改完后线上 bundle 里能读到新代码（`mountStyles` / `style watchdog`），旧符号 `function installStyles` 已消失 |
+| **宿主半**（`lib/index.js` / `catalog*.js` / `http.js`） | 需要**重启 DSH 进程** | 加临时标记 → 用 patch 层 `disabled: true` 卸载再还原触发热重载 → 标记不出现、`/plugin-market/status` 的版本仍是旧值 |
+
+两个容易踩的点：
+
+- **patch 层的 disable/enable 热重载只重建 fiber，不重新导入 Node 模块**：它能证明「这一行被卸载/重新加回」（`/status` 会先 404 再 200），但拿到的是 Loader 缓存里的旧代码。不要用它来验证宿主半改动。
+- **Loader 的模块缓存按解析后的文件路径记账**，所以「把依赖从本地目录换成 tarball」也不一定换掉 URL；而 DSH 的配置 watcher **明确忽略只改依赖的清单变化**，只认 `dsh.profile.bundles` 列表变化（`packages/boot/hmr/tests/profile.spec.ts`）。
+- 另外：`dsh --profile <桌面 profile> --dump-config` 这类操作会被拒绝（`profile "desktop" is managed exclusively by the Electron application`），插件增删仍可走 CLI，但**组合的重载只能靠那个正在运行的宿主自己**。
+
+因此给用户的标准动作是：**改动宿主半 → 重启一次 DSH**；只改客户端半 → 等几秒即可。
 
 ### 4.3 真要发 npm 时的检查单
 
