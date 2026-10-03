@@ -917,13 +917,52 @@ window.__ModuleLoader__.load({
 }
 `;
 
-    function installStyles() {
-      if (typeof document === "undefined" || !document.head) return;
-      if (document.getElementById(STYLE_ID)) return;
+    // ───────────────────────────── 样式节点的所有权 ─────────────────────────────
+    // DSH 的客户端模块系统只回收「物化窗口内出现」的 <style>：物化时快照未带 data-plugin 的新节点
+    // 会被打上 data-plugin 记账（claimStyles），这一代死掉时由 removeOwnedStyles(id) 摘掉。
+    // 据此，样式注入必须放在 factory 体内（物化窗口内），而且每代要挂**自己的新节点**：
+    //   · 放在 apply() 里注入 → 不被记账 → 节点没人回收，但会被下一次「同 id 已存在就跳过」挡住；
+    //   · 沿用同一节点 → 新旧两代共用一个，旧代被回收时新代一起失去样式，页面就成了「有功能无样式」。
+    // 另外补两道兜底：渲染时 ensureStyles()，以及 head 被摘掉时的观察器。
+    var styleObserver = null;
+
+    function makeStyleNode() {
       var node = document.createElement("style");
       node.id = STYLE_ID;
       node.textContent = STYLES;
-      document.head.appendChild(node);
+      return node;
+    }
+
+    /** 这一代自己的样式：先摘掉上一代的同 id 节点，再挂一个全新的（DSH 会记账并负责回收）。 */
+    function mountStyles() {
+      if (typeof document === "undefined" || !document.head) return;
+      var stale = document.getElementById(STYLE_ID);
+      if (stale && stale.parentNode) stale.parentNode.removeChild(stale);
+      document.head.appendChild(makeStyleNode());
+    }
+
+    /** 渲染路径上的兜底：只在缺失时补一个，避免每次渲染都换节点导致样式重算。 */
+    function ensureStyles() {
+      if (typeof document === "undefined" || !document.head) return;
+      if (document.getElementById(STYLE_ID)) return;
+      document.head.appendChild(makeStyleNode());
+    }
+
+    /** 样式被别的东西摘掉就补回来；由插件 fiber 的生命周期负责断开，避免卸载后复活。 */
+    function watchStyles(ctx) {
+      if (typeof MutationObserver !== "function" || typeof document === "undefined" || !document.head) return;
+      var stop = function () {
+        if (styleObserver) { styleObserver.disconnect(); styleObserver = null; }
+      };
+      if (styleObserver) styleObserver.disconnect();
+      styleObserver = new MutationObserver(function () { ensureStyles(); });
+      styleObserver.observe(document.head, { childList: true });
+      try {
+        if (ctx && typeof ctx.effect === "function") ctx.effect(function () { return stop; }, "dsh-plugin-market: style watchdog");
+        else if (ctx && typeof ctx.on === "function") ctx.on("dispose", stop);
+      } catch (watchError) {
+        // 拿不到 fiber 生命周期时让观察器留在本页：它只在样式缺失时补一次，不会碰到别人的节点。
+      }
     }
 
     // ───────────────────────────── 运行期接线（apply 填，组件读） ─────────────────────────────
@@ -1007,6 +1046,7 @@ window.__ModuleLoader__.load({
 
     function MarketEntry(props) {
       useChangeTick();
+      ensureStyles();
       var wide = !props || props.wide !== false;
       var active = useActivePanel(props);
       var available = RUNTIME.panelAvailable;
@@ -1565,6 +1605,7 @@ window.__ModuleLoader__.load({
     // ───────────────────────────── 市场主面板 ─────────────────────────────
     function MarketPage() {
       useChangeTick();
+      ensureStyles();
 
       var tabState = React.useState("discover");
       var tab = tabState[0];
@@ -2135,9 +2176,13 @@ window.__ModuleLoader__.load({
       }
     }
 
+    // 物化窗口内注入：这一代样式由此归这一代所有（见上方「样式节点的所有权」）。
+    mountStyles();
+
     exports.inject = ["slots", "layout", "locale"];
     exports.apply = function (ctx) {
-      installStyles();
+      ensureStyles();
+      watchStyles(ctx);
 
       var layout = readService(ctx, "layout");
       RUNTIME.selectPanel = layout && typeof layout.selectPanel === "function"
