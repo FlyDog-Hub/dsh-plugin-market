@@ -15,6 +15,14 @@
   "license": "MIT",
   "type": "module",
   "main": "lib/index.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Winnie-0721/dsh-plugin-market.git"
+  },
+  "homepage": "https://github.com/Winnie-0721/dsh-plugin-market#readme",
+  "bugs": {
+    "url": "https://github.com/Winnie-0721/dsh-plugin-market/issues"
+  },
   "exports": {
     ".": "./lib/index.js",
     "./client": "./lib/client.js",
