@@ -79,7 +79,10 @@ same file inside a 1.2 MB gzip tarball in a few hundred milliseconds — measure
 - Only plugins present in the catalog can be installed; an explicit source outside it is refused
 - Install/remove/toggle go exclusively through the Host `pluginManager` service — the plugin never
   runs a package manager itself and never edits profile files directly
-- Mutating routes accept same-origin POST only, with a 64 KiB body limit
+- Mutating routes accept only requests carrying trusted origin evidence: the desktop shell's
+  `dsh-app://app` origin, a same-origin `Origin`, or a loopback client with no origin headers at all
+  (the desktop shell strips them while forwarding). Cross-site `Origin` and
+  `Sec-Fetch-Site: cross-site` are always refused, and the body limit is 64 KiB
 - The market refuses to uninstall itself and points at the official terminal command instead
 - Catalog fetching is GET-only, carries no credentials, and writes nothing to disk
 

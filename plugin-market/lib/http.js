@@ -13,8 +13,24 @@ export const MAX_BODY_BYTES = 64 * 1024
 
 export const JSON_CONTENT_TYPE = 'application/json; charset=utf-8'
 
-/** 允许 POST 的同源信号；两个都没有时按跨站处理（契约 §1 的验收断言 5）。 */
+/** 允许写操作的 Sec-Fetch-Site 取值；其余（cross-site / same-site / none）一律拒绝。 */
 export const SAME_ORIGIN_FETCH_SITES = new Set(['same-origin'])
+
+/**
+ * 官方桌面壳（Electron）的页面 origin。桌面端把 GUI 跑在自定义协议 `dsh-app://app` 下，
+ * 所有 API 请求由主进程转发给本地宿主；那一步会**主动剥掉 Origin / Sec-Fetch-Site / Cookie / Host**
+ * 再补上宿主的 cookie（见 `dsh-desktop-host` 的 `forwardWebRequest`）。
+ * 因此在桌面端，"两个头都不存在"是**正常**请求的形状，不能当成跨站。
+ */
+export const DESKTOP_SHELL_ORIGINS = new Set(['dsh-app://app', 'dsh-app://shell'])
+
+/** 请求是否来自本机回环地址（桌面壳的转发、本地脚本、curl 都满足）。 */
+export function isLoopbackRequest(req) {
+  const address = req?.socket?.remoteAddress
+  if (typeof address !== 'string' || address === '') return false
+  const normalized = address.startsWith('::ffff:') ? address.slice('::ffff:'.length) : address
+  return normalized === '::1' || normalized === '::ffff:1' || normalized.startsWith('127.')
+}
 
 /**
  * 错误码 → 默认中文文案。每条都回答「发生了什么 / 为什么 / 现在怎么办」。
@@ -138,33 +154,54 @@ export function isJsonContentType(req) {
 }
 
 /**
- * 同源判定（契约 §1）：
- *  - 有 Sec-Fetch-Site 时只认 same-origin，其余（含 cross-site、same-site、none）一律拒绝；
- *  - 没有该头时退回 Origin 与 Host 的 host 比较；
- *  - 两个都没有（例如 curl、或第三方页面的表单）→ 拒绝。
+ * 写操作的来源判定（契约 §1）。
+ *
+ * 只拒绝**有明确外站证据**的请求，其余放行——这条规则是被真实桌面端纠正过的：
+ * 起初写成「既没有 Origin 也没有 Sec-Fetch-Site 就拒绝」，结果官方桌面壳的
+ * `forwardWebRequest` 恰好会剥掉这两个头，导致 Electron 里的安装/卸载/刷新全部 403。
+ *
+ * 判定顺序：
+ *  1. `Origin: dsh-app://app|shell` → 官方桌面壳，放行（Origin 由浏览器写死，页面脚本伪造不了）；
+ *  2. `Sec-Fetch-Site: cross-site` → 明确的跨站请求，拒绝；
+ *  3. 有 `Origin` → 与 `Host` 比 host，一致才放行（不一致即第三方页面）；
+ *  4. 两个头都没有 → 只有来自回环地址才放行（桌面壳转发、本地脚本）；
+ *  5. 只有 `Sec-Fetch-Site` → 仅 `same-origin` 放行。
  */
 export function isSameOrigin(req) {
-  const fetchSite = headerOf(req, 'sec-fetch-site')
-  if (typeof fetchSite === 'string' && fetchSite.trim() !== '') {
-    return SAME_ORIGIN_FETCH_SITES.has(fetchSite.trim().toLowerCase())
+  const originRaw = headerOf(req, 'origin')
+  const origin = typeof originRaw === 'string' ? originRaw.trim() : ''
+  const siteRaw = headerOf(req, 'sec-fetch-site')
+  const site = typeof siteRaw === 'string' ? siteRaw.trim().toLowerCase() : ''
+
+  if (origin !== '' && DESKTOP_SHELL_ORIGINS.has(origin)) return true
+  if (site === 'cross-site') return false
+  if (origin !== '') {
+    const host = headerOf(req, 'host')
+    if (typeof host !== 'string' || host.trim() === '') return false
+    let originHost
+    try {
+      originHost = new URL(origin).host
+    } catch {
+      return false
+    }
+    return originHost.toLowerCase() === host.trim().toLowerCase()
   }
-  const origin = headerOf(req, 'origin')
-  const host = headerOf(req, 'host')
-  if (typeof origin !== 'string' || origin.trim() === '') return false
-  if (typeof host !== 'string' || host.trim() === '') return false
-  let originHost
-  try {
-    originHost = new URL(origin.trim()).host
-  } catch {
-    return false
-  }
-  return originHost.toLowerCase() === host.trim().toLowerCase()
+  if (site === '') return isLoopbackRequest(req)
+  return SAME_ORIGIN_FETCH_SITES.has(site)
 }
 
 /** 同源不过就自己写 403；返回 false 表示调用方应立刻收工。 */
 export function requireSameOrigin(req, res) {
   if (isSameOrigin(req)) return true
-  sendError(res, 403, 'cross-origin')
+  // 把收到的判定信号如实写进 hint：跨站被拒时，用户/脚本需要知道是哪一个头导致的，
+  // 否则只能在「403 cross-origin」和猜之间来回（桌面端曾因壳剥掉这些头而全部被拒）。
+  const origin = headerOf(req, 'origin') ?? '（无）'
+  const site = headerOf(req, 'sec-fetch-site') ?? '（无）'
+  const address = req?.socket?.remoteAddress ?? '（未知）'
+  sendError(res, 403, 'cross-origin', {
+    hint: `市场只接受来自本页面的写请求。本次收到：Origin=${origin}、Sec-Fetch-Site=${site}、来源地址=${address}。`
+      + '在本页内重试；脚本请带上 Origin 或 Sec-Fetch-Site: same-origin，桌面端请从应用内操作。'
+  })
   return false
 }
 

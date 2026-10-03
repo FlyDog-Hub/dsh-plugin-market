@@ -62,7 +62,7 @@ pwsh -File scripts\install-into-profile.ps1 -Profile desktop -Rollback -BackupDi
 
 - 只允许安装目录里存在的插件：显式传入的安装来源必须在目录中，否则拒绝
 - 安装/卸载/开关只走宿主 `pluginManager` 服务，插件自己不起包管理器、不直接改 profile 文件
-- 写操作只接受同源 POST；请求体上限 64 KiB
+- 写操作只接受有可信来源证据的请求：官方桌面壳的 `dsh-app://app` origin、同源 `Origin`、或来自回环地址且没有任何来源头的请求（桌面端转发会剥掉这些头）；跨站 `Origin` / `Sec-Fetch-Site: cross-site` 一律拒绝
 - 市场不能卸载自己（避免点一下失去唯一入口），会提示在终端执行官方命令
 - 目录抓取只发 GET、不带任何凭据、不写磁盘
 

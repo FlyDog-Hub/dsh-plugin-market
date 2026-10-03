@@ -19,7 +19,17 @@
 - 所有响应 `Content-Type: application/json; charset=utf-8`，`Cache-Control: no-store`。
 - 成功：`{ "ok": true, ... }`。失败：`{ "ok": false, "error": { "code": string, "message": string, "hint"?: string } }`。
 - 失败同时使用语义化 HTTP 状态码：`400` 参数错误 / `403` 跨站请求 / `404` 未知路径 / `405` 方法不允许 / `502` 目录源不可用 / `504` 目录源超时 / `500` 内部错误。
-- POST 只接受同源请求：要求 `Sec-Fetch-Site: same-origin`，或 `Origin` 的 host 与 `Host` 头一致；否则 `403 cross-origin`。同时 `Content-Type` 必须是 `application/json`，请求体上限 64 KiB。
+- POST 的写操作只接受「有可信来源证据」的请求，判定顺序（实现见 `lib/http.js` 的 `isSameOrigin`）：
+  1. `Origin: dsh-app://app` 或 `dsh-app://shell` → 放行（官方 Electron 桌面壳的页面 origin，页面脚本无法伪造 Origin）；
+  2. `Sec-Fetch-Site: cross-site` → 拒绝；
+  3. 有 `Origin` → 其 host 必须与 `Host` 一致，否则拒绝；
+  4. **两个头都不存在 → 仅当客户端是回环地址时放行**；
+  5. 只有 `Sec-Fetch-Site` → 仅 `same-origin` 放行。
+  拒绝时返回 `403 cross-origin`，且 `hint` 里如实带上收到的 `Origin` / `Sec-Fetch-Site` / 来源地址，便于定位。
+  **第 4 条是真实环境纠正过的**：官方桌面壳 `dsh-desktop-host` 的 `forwardWebRequest` 在转发前会删除
+  `Host`、`Origin`、`Cookie`、`Sec-Fetch-Site`（再补上宿主 cookie），所以桌面端写请求天然不带这两个头；
+  早期把它当跨站，导致 Electron 里的安装/卸载/开关/刷新全部 403。
+  同时 `Content-Type` 必须是 `application/json`，请求体上限 64 KiB。
 - 错误码清单：`bad-request`、`cross-origin`、`method-not-allowed`、`not-found`、`catalog-unavailable`、`catalog-timeout`、`manager-unavailable`、`not-in-catalog`、`install-failed`、`remove-failed`、`toggle-failed`、`not-allowed`、`internal`。
 - 面向用户的 `message`/`hint` 用中文短句，遵守「发生了什么 / 为什么 / 现在怎么办」。
 
@@ -245,7 +255,12 @@ window.__ModuleLoader__.load({
 2. 首页 HTML 的 `window.__DSH_BOOT__` 里存在 `id === 'dsh-plugin-market'` 的 entry，URL 形如 `/plugins/??dsh-plugin-market/client.js&rev=…`。
 3. 该 URL 返回 JS 且包含 `__ModuleLoader__.load` 与 `id:"dsh-plugin-market"`。
 4. `GET /plugin-market/status`、`/catalog?query=dsh&pageSize=5`、`/installed` 返回 `ok:true`，字段齐全。
-5. `POST /plugin-market/install` 无 `Origin`/`Sec-Fetch-Site` 时返回 403（跨站保护）；`GET` 到 POST 路由返回 405。
+5. 写操作的来源判定（**必须在带 cookie 的已鉴权会话上测**，否则会先被宿主信任层以空 body 403 拦掉，测不到插件自己的守卫）：
+   - **桌面壳形状**：带 cookie、无 `Origin`、无 `Sec-Fetch-Site` → `200`（这是修复后的关键回归项）；
+   - 带 cookie + `Origin=https://evil.example` → `403` 且 body 是我们的 `cross-origin` JSON；
+   - 带 cookie + `Sec-Fetch-Site: cross-site` → `403`；
+   - 带 cookie + 同源 `Origin` → `200`；
+   - `GET` 到 POST 路由 → `405` + `Allow`。
 6. `POST /plugin-market/install` 用目录外 spec 返回 400 `not-in-catalog`。
 7. 卸载自身返回 400 `not-allowed`。
 8. 目录缓存：连续两次 `GET /catalog` 第二次 `fetchedAt` 不变；`POST /refresh` 后变化。
