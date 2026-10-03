@@ -34,6 +34,18 @@ if (-not (Test-Path $pnpm)) { throw "找不到 pnpm：$pnpm" }
 function Step([string]$text) { Write-Host ''; Write-Host "==== $text" -ForegroundColor Cyan }
 function Ok([string]$text) { Write-Host "  ✓ $text" -ForegroundColor Green }
 
+# 原生工具的进度/警告写 stderr，而 $ErrorActionPreference='Stop' 会在这些字节进入管道之前
+# 就把它们当成终止错误（即使 exit code 是 0），把脚本掐断。所有「会说话」的原生调用都走这里：
+# 临时降级为 Continue，收集输出，返回 exit code 交给调用方判定。
+function Invoke-Native([string]$exe, [string[]]$argv) {
+  $previous = $ErrorActionPreference
+  $ErrorActionPreference = 'Continue'
+  try { $text = @(& $exe @argv 2>&1) } finally { $ErrorActionPreference = $previous }
+  $code = $LASTEXITCODE
+  foreach ($line in $text) { Write-Host "  $line" }
+  return $code
+}
+
 # ── 1. 读并校验当前版本 ─────────────────────────────────────────────
 Step '1/5 读取并校验版本'
 $manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
@@ -194,10 +206,9 @@ if ($SkipPush) {
 }
 Push-Location $root
 try {
-  # git 把进度写到 stderr；在 $ErrorActionPreference='Stop' 下，未被管道接住的 stderr 会变成
-  # 终止错误并把脚本掐断（哪怕 exit code 是 0）。所以这里显式把它接进管道。
-  & git push --follow-tags 2>&1 | ForEach-Object { Write-Host "  $_" }
-  if ($LASTEXITCODE -ne 0) { throw 'git push 失败（本机 github.com 需要 HTTPS_PROXY，见 docs/RELEASING.md）' }
+  if ((Invoke-Native 'git' @('push', '--follow-tags')) -ne 0) {
+    throw 'git push 失败（本机 github.com 需要 HTTPS_PROXY，见 docs/RELEASING.md）'
+  }
   Ok '已推送提交与标签'
 } finally { Pop-Location }
 
@@ -218,9 +229,17 @@ $notes = $notes + "`n`n---`n`n- versionName ``$version`` / versionCode ``$versio
 $notesPath = Join-Path $distDir "release-notes-v$version.md"
 [System.IO.File]::WriteAllText($notesPath, $notes, [System.Text.UTF8Encoding]::new($false))
 
-& $gh release create "v$version" $tgz (Join-Path $distDir 'version.json') `
-  --title "v$version" --notes-file $notesPath 2>&1 | ForEach-Object { Write-Host "  $_" }
-if ($LASTEXITCODE -ne 0) { throw 'gh release create 失败' }
-Ok "GitHub Release v$version 已创建"
+$releaseCode = Invoke-Native $gh @(
+  'release', 'create', "v$version", $tgz, (Join-Path $distDir 'version.json'),
+  '--title', "v$version", '--notes-file', $notesPath
+)
+if ($releaseCode -ne 0) {
+  # 重跑一次常见情况：Release 已存在（上一次只是输出被读失败），那就补传资产而不是失败。
+  & $gh release view "v$version" 2>&1 | Out-Null
+  if ($LASTEXITCODE -ne 0) { throw 'gh release create 失败' }
+  Ok "Release v$version 已存在，跳过创建"
+} else {
+  Ok "GitHub Release v$version 已创建"
+}
 Write-Host ''
 Write-Host "发布完成：v$version（versionCode=$versionCode, build=+$commits.$sha）"
