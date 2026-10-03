@@ -167,10 +167,18 @@ try {
   }
   $tag = "v$version"
   $existing = & git tag --list $tag
-  if ($existing) { throw "标签已存在：$tag（版本号不可重用，请递增）" }
-  & git tag -a $tag -m "v$version"
-  if ($LASTEXITCODE -ne 0) { throw 'git tag 失败' }
-  Ok "已打标签 $tag（指向 $((& git rev-parse --short HEAD).Trim())）"
+  if ($existing) {
+    # 可重入：标签已在、且就指在当前提交上，说明前面那一步已经完成过，继续往下建 Release；
+    # 指向别的提交才说明版本号被重用，那才是必须中止的情况。
+    $tagTarget = (& git rev-list -n 1 $tag).Trim()
+    $head = (& git rev-parse HEAD).Trim()
+    if ($tagTarget -ne $head) { throw "标签 $tag 已存在且指向其它提交（$tagTarget），版本号不可重用" }
+    Ok "标签 $tag 已存在且指向当前提交，继续（可重入）"
+  } else {
+    & git tag -a $tag -m "v$version"
+    if ($LASTEXITCODE -ne 0) { throw 'git tag 失败' }
+    Ok "已打标签 $tag（指向 $((& git rev-parse --short HEAD).Trim())）"
+  }
 } finally { Pop-Location }
 
 # ── 5. 推送 + GitHub Release ────────────────────────────────────────
@@ -182,7 +190,9 @@ if ($SkipPush) {
 }
 Push-Location $root
 try {
-  & git push --follow-tags
+  # git 把进度写到 stderr；在 $ErrorActionPreference='Stop' 下，未被管道接住的 stderr 会变成
+  # 终止错误并把脚本掐断（哪怕 exit code 是 0）。所以这里显式把它接进管道。
+  & git push --follow-tags 2>&1 | ForEach-Object { Write-Host "  $_" }
   if ($LASTEXITCODE -ne 0) { throw 'git push 失败（本机 github.com 需要 HTTPS_PROXY，见 docs/RELEASING.md）' }
   Ok '已推送提交与标签'
 } finally { Pop-Location }
