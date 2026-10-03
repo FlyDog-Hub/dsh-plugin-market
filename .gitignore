@@ -9,6 +9,9 @@ verify/logs/
 # 本机运行产物
 dsh-usage-boot.log
 
+# 发布产物（由 scripts/release.ps1 生成，作为 GitHub Release 附件分发，不入库）
+dist/
+
 # 编辑器和系统噪声
 .vscode/
 .idea/
