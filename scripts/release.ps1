@@ -95,6 +95,25 @@ if ($clientText -notmatch ('id\s*:\s*"' + [regex]::Escape($manifest.name) + '"')
 if ($clientText -match 'eval\s*\(' -or $clientText -match 'new\s+Function\s*\(') { throw 'client bundle 含 eval/new Function' }
 Ok 'client bundle：有 loader 注册、id 与包名一致、无 eval/new Function'
 
+# 旧版本号不得留在发布物里：写死的版本号会在发布后与 package.json 漂移（1.0.1 发布时
+# lib/index.js 里还写着 1.0.0，页面与 /status 都跟着显示旧版本）。
+if ($version -ne $current) {
+  $staleHits = @(Get-ChildItem (Join-Path $pkgDir 'lib') -Filter '*.js' | Select-String -SimpleMatch $current)
+  if ($staleHits.Count -gt 0) {
+    $where = ($staleHits | ForEach-Object { "$($_.Filename):$($_.LineNumber)" }) -join '、'
+    throw "lib/ 里仍写着旧版本号 $current（$where）。版本必须从包清单读，不要写死在代码里。"
+  }
+  Ok "lib/ 里没有写死的旧版本号 $current"
+}
+
+# 行为回归测试：verify/ 下所有 *.test.mjs 必须全绿（与门禁里的其它检查同等对待）。
+$regressionTests = @(Get-ChildItem (Join-Path $root 'verify') -Filter '*.test.mjs' -ErrorAction SilentlyContinue)
+foreach ($test in $regressionTests) {
+  & $node $test.FullName | Out-Null
+  if ($LASTEXITCODE -ne 0) { throw "回归测试未通过：verify/$($test.Name)" }
+}
+if ($regressionTests.Count -gt 0) { Ok ("回归测试通过：" + (($regressionTests | ForEach-Object { $_.Name }) -join '、')) }
+
 $guardTest = Join-Path $root 'verify\origin-guard.test.mjs'
 if (Test-Path $guardTest) {
   & $node $guardTest | Out-Null

@@ -8,6 +8,7 @@
  * 而七个端点又在同一个前缀下——一条 prefix 路由 + 内部分发是唯一不会互相撞的写法。
  */
 
+import { createRequire } from 'node:module'
 import {
   createRouteTable,
   pickQueryEnum,
@@ -29,7 +30,18 @@ import {
 } from './catalog.js'
 
 const PLUGIN_NAME = 'dsh-plugin-market'
-const PLUGIN_VERSION = '1.0.0'
+/**
+ * 版本从包清单读，**不写死**：写死会在每次发布后与 package.json 漂移，页面与 /status 会跟着
+ * 显示上一个版本（本仓库真的发生过一次，发布门禁为此加了一条检查）。读不到时退回 '0.0.0'，
+ * 让漂移在界面上明显可见，而不是显示一个看起来合理的旧版本号。
+ */
+const PLUGIN_VERSION = (() => {
+  try {
+    return createRequire(import.meta.url)('../package.json').version ?? '0.0.0'
+  } catch {
+    return '0.0.0'
+  }
+})()
 const ROUTE_PREFIX = '/plugin-market'
 const SORT_VALUES = ['top', 'new', 'downloads', 'name']
 
