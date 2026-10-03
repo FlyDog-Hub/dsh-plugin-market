@@ -1,0 +1,18 @@
+# 参考克隆（dsh-market 与 deepseek-harness 官方源码，只读参考，第三方代码）
+_ref/
+
+# 验收工作区：临时 profile、备份、日志、截图原件
+# 注意：verify/logs/ 里有真实的本地鉴权 token（启动日志里的 ?token=…），绝不能提交
+_verify/
+verify/logs/
+
+# 本机运行产物
+dsh-usage-boot.log
+
+# 编辑器和系统噪声
+.vscode/
+.idea/
+*.swp
+Thumbs.db
+Desktop.ini
+*.tmp

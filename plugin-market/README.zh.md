@@ -1,0 +1,90 @@
+# dsh-plugin-market
+
+[English](README.md) | 中文
+
+**DeepSeek Harness 里的插件市场。** 侧边栏底部一个入口，点开就能浏览、搜索社区插件目录，
+一键安装、更新、启用/停用、卸载，全程不用离开 GUI。
+
+- 数据来自社区精选目录 [awesome-dsh-plugin](https://awesome-dsh-plugin.com/plugins.json)（4000+ 条，每日更新）
+- 目录优先从 npm 镜像读取（`dsh-plugin-catalog` 包，本机实测 0.3 秒），官方源兜底；抓取、缓存、重试、降级都在宿主进程完成，浏览器只读 `/plugin-market`
+- 安装与卸载走官方插件管理器服务（同一个 pnpm 路径、同一套构建脚本审批规则）
+- 一个包同时提供 host 半与 web client 半，符合 DeepSeek Harness 插件规范
+
+## 安装
+
+```sh
+# 本地目录（开发/自用）
+dsh plugin --profile web add "E:\AI\DeepSeek Harness\Dsh\plugin-market"
+
+# 发布到 npm 之后
+dsh plugin --profile web add dsh-plugin-market
+```
+
+装完重启一次 `dsh web`（或让桌面端重新组合），刷新页面即可看到入口。
+
+Windows 上一键安装并自动备份 profile：
+
+```powershell
+pwsh -File scripts\install-into-profile.ps1 -Profile desktop
+# 回滚
+pwsh -File scripts\install-into-profile.ps1 -Profile desktop -Rollback -BackupDir _verify\backup-desktop-<时间戳>
+```
+
+## 入口在哪
+
+侧边栏**底部**、账号行上方的那一条（Settings 行上方）：整行显示「插件市场」，
+侧边栏收成 56px 轨道时变成图标按钮。点击打开中央的市场页面。
+
+![侧边栏底部入口](assets/market-entry.png)
+
+![市场页](assets/market-page.png)
+
+## 你会得到什么
+
+- **浏览与搜索**：名称/作者/描述全文搜索（300ms 防抖），分类筛选，按热门 / 最新 / 下载量 / 名称排序，分页
+- **一眼看懂一张卡片**：名称、作者、star、下载量、版本、分类、双语描述；展开详情可看完整描述、能力标签、仓库与目录页链接
+- **一键安装**：确认来源 → 看进度 → 结果落点明确；需要执行构建脚本时，先把要执行的包名摆出来再让你决定
+- **已安装管理**：启用 / 停用（走 profile 的 patch 层，能热加载的就地生效）、卸载（含二次确认）、有更新时一键更新
+- **目录状态诚实**：显示数据源、条目数、更新时间；刷新失败时明确说「这是上一次的缓存」，不假装是最新的
+- **出错给下一步**：每条错误都回答「发生了什么 / 为什么 / 现在怎么办」，并给重试入口
+- **深浅色与窄屏**：颜色全部走宿主主题变量，跟随宿主语言（中文 / English）
+
+## 配置
+
+| 环境变量 | 作用 |
+|---|---|
+| `DSHM_REGISTRY_URL` | 指向你自己的目录（任何返回同结构 `plugins.json` 的地址）。设置后**只**用它，不再回退到内置源 |
+| `DSHM_NPM_MIRROR` | 覆盖读取目录所用的 npm 镜像（默认依次为 `registry.npmmirror.com`、`registry.npmjs.org`） |
+
+目录源顺序：npm 镜像上的 `dsh-plugin-catalog` → 官方 `awesome-dsh-plugin.com/plugins.json`。之所以把 npm 放在前面，是因为官方源挂在 GitHub Pages 上，在国内直连常常 25 秒超时，而 npm 镜像（含包内 `package/plugins.json`，1.2MB gzip）通常几百毫秒就能取到——本机实测 289ms 对 25s 超时。这与 dsh-market 自己的区域路由是同一套做法。
+
+## 安全
+
+- 只允许安装目录里存在的插件：显式传入的安装来源必须在目录中，否则拒绝
+- 安装/卸载/开关只走宿主 `pluginManager` 服务，插件自己不起包管理器、不直接改 profile 文件
+- 写操作只接受同源 POST；请求体上限 64 KiB
+- 市场不能卸载自己（避免点一下失去唯一入口），会提示在终端执行官方命令
+- 目录抓取只发 GET、不带任何凭据、不写磁盘
+
+## 已知限制
+
+- 只支持 Web / 桌面 profile 的 GUI（headless profile 里只有 host 半可用）
+- 需要重启才生效的变更会如实显示，不提供自动重启助手
+- 不内置目录快照：抓取失败时宁可报错也不显示过期目录（避免把「今天发布的插件」显示成「不存在」）
+- 没有收藏 / 备注 / 分组 / 备份 / 主题市场 / 评论（见 `docs/PLUGIN-MARKET.md` §7）
+
+## 开发与验收
+
+- 接口契约：`docs/API-CONTRACT.md`
+- 设计与规范对照：`docs/PLUGIN-MARKET.md`
+- 验收报告：`verify/REPORT.md`，脚本入口 `scripts/verify-market.ps1`
+
+```sh
+# 两个半的语法检查
+node --check plugin-market/lib/index.js
+node --check plugin-market/lib/client.js
+```
+
+## 许可
+
+MIT。目录数据版权与许可归 [awesome-dsh-plugin](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin) 所有。
