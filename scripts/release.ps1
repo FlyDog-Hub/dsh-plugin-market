@@ -168,12 +168,16 @@ try {
   $tag = "v$version"
   $existing = & git tag --list $tag
   if ($existing) {
-    # 可重入：标签已在、且就指在当前提交上，说明前面那一步已经完成过，继续往下建 Release；
-    # 指向别的提交才说明版本号被重用，那才是必须中止的情况。
-    $tagTarget = (& git rev-list -n 1 $tag).Trim()
-    $head = (& git rev-parse HEAD).Trim()
-    if ($tagTarget -ne $head) { throw "标签 $tag 已存在且指向其它提交（$tagTarget），版本号不可重用" }
-    Ok "标签 $tag 已存在且指向当前提交，继续（可重入）"
+    # 可重入：标签已在本提交的历史里，且**被打包的内容自标签以来逐字节未变**时，继续往下建 Release。
+    # 这样「推送/建 Release 分两步、后者失败」的重跑不会被自己挡住，同时保住真正要防的事：
+    # 版本号被重用（标签不在历史里）或打包内容被改（改了就得发新版本号）。
+    & git merge-base --is-ancestor $tag HEAD
+    if ($LASTEXITCODE -ne 0) { throw "标签 $tag 已存在且不在当前历史里，版本号不可重用" }
+    & git diff --quiet $tag HEAD -- plugin-market
+    if ($LASTEXITCODE -ne 0) {
+      throw "自 $tag 以来 plugin-market/ 有改动——发布内容变了就必须递增版本号（-Bump patch|minor|major），不能复用 $version"
+    }
+    Ok "标签 $tag 已在历史中且 plugin-market/ 未变，继续（可重入）"
   } else {
     & git tag -a $tag -m "v$version"
     if ($LASTEXITCODE -ne 0) { throw 'git tag 失败' }
