@@ -75,33 +75,46 @@ try {
     Stop-StubServer $stubSrv
   }
 
-  $passedUnexpectedly = @($collected | Where-Object { $_.Pass })
+  # 期望矩阵：wrong-market stub 上，契约类断言必须全部 FAIL；分层诊断类断言预期 PASS。
+  # A5g 是「区分宿主信任层与插件守卫」的测量诊断，不是契约判据：stub 里根本没有宿主信任层，
+  # 所以它返回非 403 正是正确观察，硬要求它 FAIL 反而是把诊断当判据。
+  $mustFail = @('A4a','A4b','A4c','A5a','A5b','A5c','A5d','A5e','A5f','A6','A7','A8a','A8b','A14a','A14b','A12','A13','A15')
+  $mustPass = @('A5g')
+
+  $passedUnexpectedly = @($collected | Where-Object { $_.Pass -and ($mustPass -notcontains $_.Id) })
+  $failedUnexpectedly = @($collected | Where-Object { (-not $_.Pass) -and ($mustPass -contains $_.Id) })
   foreach ($c in $collected) {
     $mark = 'FAIL(预期)'
-    if ($c.Pass) { $mark = 'PASS(意外!)' }
+    if ($mustPass -contains $c.Id) { $mark = 'PASS(预期,诊断)' }
+    if ($c.Pass -and ($mustPass -notcontains $c.Id)) { $mark = 'PASS(意外!)' }
+    if ((-not $c.Pass) -and ($mustPass -contains $c.Id)) { $mark = 'FAIL(意外!)' }
     Write-Host ("  [{0}] {1,-5} {2}" -f $mark, $c.Id, $c.Title)
   }
-  Write-Host "  共 $($collected.Count) 条，意外 PASS 的 = $($passedUnexpectedly.Count)"
+  $expectedTotal = $mustFail.Count + $mustPass.Count
+  Write-Host "  共 $($collected.Count) 条（期望 $expectedTotal 条：$($mustFail.Count) 必红 + $($mustPass.Count) 诊断必绿），意外 PASS 的 = $($passedUnexpectedly.Count)，意外 FAIL 的 = $($failedUnexpectedly.Count)"
   Add-Evidence -File $evidence -Title '[1] wrong-market stub 的断言结果' -Text (($collected | ForEach-Object { "$($_.Id) pass=$($_.Pass) :: $($_.Actual)" }) -join "`n")
 
-  if ($collected.Count -lt 15) {
-    $null = $selfCheckFailures.Add("市场断言只跑了 $($collected.Count) 条，少于预期 15 条（可能有断言没被执行）")
+  if ($collected.Count -lt $expectedTotal) {
+    $null = $selfCheckFailures.Add("市场断言只跑了 $($collected.Count) 条，少于预期 $expectedTotal 条（可能有断言没被执行）")
   }
   foreach ($p in $passedUnexpectedly) {
     $null = $selfCheckFailures.Add("断言 $($p.Id) 在明显错误的响应上仍然 PASS —— 该断言无效：$($p.Actual)")
   }
+  foreach ($p in $failedUnexpectedly) {
+    $null = $selfCheckFailures.Add("诊断断言 $($p.Id) 在 stub 上 FAIL（预期应为 PASS）—— 说明分层诊断写错了：$($p.Actual)")
+  }
 
   # 关键补强：不仅要求「会红」，还要求「红得有道理」。
-  # 如果探针根本读不到 4xx/错误正文，这 15 条 FAIL 只证明「工具没读到」，不证明「实现没给」——
+  # 如果探针根本读不到 4xx/错误正文，这些 FAIL 只证明「工具没读到」，不证明「实现没给」——
   # 第一轮验收就是这样把 9 条正确的实现误判成缺陷。
   #
   # wrong-market stub 里只有两条响应带 JSON error.code：
-  #   A6  （带 Origin 的 POST /install）→ 403 {"error":{"code":"cross-origin"}}
-  #   A14c（Origin: evil.example）      → 200 {"error":{"code":"internal"}}
+  #   A6 （同源 Origin 的 POST /install）→ 403 {"error":{"code":"cross-origin"}}
+  #   A5c（Origin: evil.example）        → 200 {"error":{"code":"internal"}}
   # 所以用这两条证明「异常路径正文可读」，并额外要求 curl.exe 独立复核也读到同样的码。
   foreach ($expect in @(
-      [pscustomobject]@{ Id = 'A6'; Status = 403; Needle = 'cross-origin' },
-      [pscustomobject]@{ Id = 'A14c'; Status = 200; Needle = 'internal' }
+      [pscustomobject]@{ Id = 'A6'; Needle = 'cross-origin' },
+      [pscustomobject]@{ Id = 'A5c'; Needle = 'internal' }
     )) {
     $a = $collected | Where-Object { $_.Id -eq $expect.Id } | Select-Object -First 1
     if ($null -eq $a) {
@@ -166,6 +179,6 @@ if ($selfCheckFailures.Count -gt 0) {
   Add-Evidence -File $evidence -Title '[结论] 自检失败' -Text ($selfCheckFailures -join "`n")
   exit 1
 }
-Write-Host "自检通过：错误响应上 15/15 条市场断言全部 FAIL；boot 图好/坏两个方向的 A2/A3 均符合预期。"
+Write-Host "自检通过：错误响应上 $($mustFail.Count)/$($mustFail.Count) 条契约断言全部 FAIL；$($mustPass.Count) 条分层诊断断言按预期 PASS；boot 图好/坏两个方向的 A2/A3/A3b 均符合预期。"
 Write-Host "证据文件 = $evidence"
 exit 0

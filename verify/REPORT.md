@@ -1,10 +1,11 @@
 # 插件市场验收报告（task-3）
 
-- **结论：通过。最终一轮 47 条断言全绿（PASS=47 FAIL=0），运行 id `verify-20261003-214407`。**
-- 被测对象：`E:\AI\DeepSeek Harness\Dsh\plugin-market`（`dsh-plugin-market` v1.0.0，host `lib/index.js` + `lib/catalog.js` + `lib/http.js`，client `lib/client.js`）
-- 验收者：`market-verifier`（独立验收，未修改 `plugin-market/**`）
+- **结论：通过。修复后复验一轮 53 条断言全绿（PASS=53 FAIL=0），运行 id `verify-20261003-221755`。**
+- **本轮是 v1.0.0「桌面壳兼容性」修复的独立复验**，不是重复上一次：上一轮 47/47（`verify-20261003-214407`）**不覆盖桌面壳形状**，正是它漏掉了线上那个「Electron 里所有写操作 403」的真缺陷。两轮的关系见 §11.1。
+- 被测对象：`E:\AI\DeepSeek Harness\Dsh\plugin-market`（`dsh-plugin-market` v1.0.0，host `lib/index.js` + `lib/catalog.js` + `lib/catalog-npm.js` + `lib/http.js`，client `lib/client.js`）
+- 验收者：`market-verifier`（独立验收，未修改 `plugin-market/**`；`verify/origin-guard.test.mjs` 由 Lead 提供，属我的写入范围）
 - 契约依据：`docs/API-CONTRACT.md`（§5 断言清单 + §1/§2/§3 契约条款）、`docs/TEAM-BRIEF.md`
-- 本次验收的 5 条实现缺陷/偏差结论、7 条工具缺陷、以及全部原始证据见下文各节。
+- 本次验收的实现缺陷结论、8 条工具缺陷、全部原始证据见下文各节。
 
 ---
 
@@ -12,16 +13,20 @@
 
 | 项 | 值 |
 |---|---|
-| 最终运行 id | `verify-20261003-214407` |
-| 断言结果 | **PASS 47 / FAIL 0**（退出码 0） |
-| 被测代码冻结点 | `catalog-npm.js` 21:29:37、`catalog.js` 21:30:10、`index.js` 21:30:14（Lead 复核），均早于本轮开始时间 21:44:07；`README.md`/`README.zh.md` 在 21:36 被队友更新过，属文档改动，不影响 lib 断言 |
+| 本轮运行 id（修复后复验） | `verify-20261003-221755` |
+| 本轮断言结果 | **PASS 53 / FAIL 0**（退出码 0） |
+| 上一轮运行 id（修复前基线） | `verify-20261003-214407`，PASS 47 / FAIL 0（**不覆盖桌面壳形状**，故未发现线上缺陷） |
+| 被测代码 | v1.0.0；`lib/http.js` 的 `isSameOrigin` 为桌面壳修复后的版本；`lib/catalog-npm.js` 为 task-6 镜像优先版本 |
 | 独立 DSH_HOME | `E:\AI\DeepSeek Harness\Dsh\_verify\dshhome`（真实 `C:\Users\28062\.dsh` 全程只读） |
 | 临时 profile | `_verify\dshhome\profiles\marketcheck`（另有 `chaincheck` / `drill` / `mk1` / `probe1` 为探路遗留） |
-| 本轮端口 | `2056, 16748, 59459, 59479`（boot1-4 宿主）＋ fixture 动态端口；**结束全部释放，残留占用 0** |
-| 真实抓取耗时 | 冷启动 **550 ms**，count=4412，source=`npm:dsh-plugin-catalog@2026.1003.4803 (registry.npmmirror.com)` |
-| 断言自检 | `selfcheck.ps1` 通过：错误响应上 15/15 条市场断言全部 FAIL；boot 图好/坏两向 A2/A3 符合预期 |
+| 本轮端口 | `25112, 55343, 55362, 55374`（boot1-4 宿主）＋ fixture 动态端口；**结束全部释放，残留占用 0** |
+| 真实抓取耗时 | 冷启动 **527 ms**，count=4412，source=`npm:dsh-plugin-catalog@2026.1003.4803 (registry.npmmirror.com)` |
+| 断言自检 | `selfcheck.ps1` 通过：错误 stub 上 18/18 条契约断言全红、1 条分层诊断断言按预期绿；boot 图好/坏两向 A2/A3/A3b 符合预期 |
+| 判定矩阵单测 | `origin-guard.test.mjs` 17/17 通过（已并入验收脚本，断言 id `A5-guard`） |
 
-**遗留风险 3 项**（不阻塞安装，详见 §9）：真实浏览器渲染未断言；官方 URL 兜底最坏 30s；`updateAvailable` 的版本比较只用 fixture 注入值验证过（真实目录里没有对照用的已装包）。
+**新增断言（相对上一轮）**：`A5-session`（已鉴权会话）、`A5a`（桌面壳形状关键回归项，期望已按新契约反转）、`A5c`/`A5d`/`A5e`/`A5f`（外站 Origin / cross-site / 同源 / 同站不同端口）、`A5g`（两层防护分层诊断）、`A5-guard`（判定矩阵单测）——共 7 条。
+
+**遗留风险 3 项**（不阻塞安装，详见 §8）：真实浏览器渲染未断言；官方 URL 兜底最坏 30s；`updateAvailable` 的版本比较只用 fixture 注入值验证过（真实目录里没有对照用的已装包）。
 
 ---
 
@@ -71,50 +76,56 @@ cmd /c call "…\bin\dsh.cmd" --profile "marketcheck" --port 1539 --no-open 1>ou
 | 1 | `A0` | `Get-Content "E:\AI\DeepSeek Harness\Dsh\plugin-market\package.json" -Raw \| ConvertFrom-Json` | JSON 可解析；name=dsh-plugin-market | name=dsh-plugin-market version=1.0.0 | **PASS** |
 | 2 | `A10` | `node --check "E:\AI\DeepSeek Harness\Dsh\plugin-market\lib\index.js"` | 两者 exit=0 | host exit=0；client exit=0 | **PASS** |
 | 3 | `A9` | `Select-String -Path "E:\AI\DeepSeek Harness\Dsh\plugin-market\lib\client.js" -Pattern 'eval\(','new Function\(' -AllMatches` | eval( 0；new Function( 0；__ModuleLoader__.load >=1；id\s*:\s*["']dsh-plugin-market["'] >=1 | eval(=0 newFunction(=0 ModuleLoaderLoad=1 idMatch=1 clientBytes=103816 | **PASS** |
-| 4 | `A0b` | `dsh plugin --profile marketcheck add "E:\AI\DeepSeek Harness\Dsh\plugin-market"` | dsh.profile.bundles 含 dsh-plugin-market；node_modules\dsh-plugin-market 存在 | 安装 exit=True；bundles=[@deepseek-ai/dsh-base, @deepseek-ai/dsh-web-app, dsh-plugin-market, @feiyang666/dsh-usage-plugin]；node_modules\dsh-… | **PASS** |
+| 4 | `A0b` | `dsh plugin --profile marketcheck add "E:\AI\DeepSeek Harness\Dsh\plugin-market"` | dsh.profile.bundles 含 dsh-plugin-market；node_modules\dsh-plugin-market 存在 | 安装 exit=True；bundles=[@deepseek-ai/dsh-base, @deepseek-ai/dsh-web-app, dsh-plugin-market, @feiyang666/dsh-usage-plugin]；node_modules\dsh-plugin-mar… | **PASS** |
 | 5 | `E1` | `Get-Content "E:\AI\DeepSeek Harness\Dsh\_verify\dshhome\profiles\marketcheck\package.json" -Raw` | bundles 含 dsh-plugin-market；node_modules\dsh-plugin-market\cordis.patch.yml 存在且非空 | bundles=[@deepseek-ai/dsh-base, @deepseek-ai/dsh-web-app, dsh-plugin-market, @feiyang666/dsh-usage-plugin]；cordis.patch.yml 存在=True；长度=537 | **PASS** |
-| 6 | `A1` | `/c call "D:\Software\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd" --profile "marketcheck" --port 59459 --no-open 1>"E:\AI\DeepSeek…` | 端口就绪；日志 FAILED 行 0；无被测包相关报错；无模块解析失败 | ready=True FAILED行=0 被测包报错行=0 模块解析失败行=0 | **PASS** |
-| 7 | `E4` | `GET http://127.0.0.1:59457/__reset` | status=200；ok:true；manager.available=true；catalog 为 null；期间 fixture 请求计数 +0 | status=200 ok=True manager.available=True catalog=null fixture请求数=0（期望 0） | **PASS** |
-| 8 | `A2` | `GET <启动日志里的鉴权 URL>  →  解析 globalThis["__DSH_BOOT__"]  →  entries[] 中找 id === 'dsh-plugin-market'` | 存在该 entry；url 形如 plugins/??dsh-plugin-market/client.js&rev=…（契约写绝对 /plugins/…，实测为文档相对，两种都接受） | httpStatus=200 htmlLen=35348 shape=globalThis["__DSH_BOOT__"] entries=67 batches=3 entry=found url=plugins/??dsh-plugin-market/client.js&… | **PASS** |
-| 9 | `A3` | `GET http://127.0.0.1:59459/plugins/??dsh-plugin-market/client.js&rev=595c001c1b5f` | HTTP 200；正文含 __ModuleLoader__.load 且含 id:"dsh-plugin-market" | status=200 bytes=110971 hasModuleLoaderLoad=True hasId=True | **PASS** |
-| 10 | `A3b` | `GET http://127.0.0.1:59459/plugins/??dsh-plugin-market/client.js&rev=595c001c1b5f  →  [System.Text.Encoding]::UTF8.GetString(原始字节)  →  搜索…` | 解码后包含「插件市场」；且不含替换字符 U+FFFD（中文未变乱码） | utf8DecodedBytes=110971 contains插件市场=True U+FFFD个数=0 | **PASS** |
-| 11 | `A4a` | `GET http://127.0.0.1:59459/plugin-market/status` | HTTP 200；ok:true；含 plugin/host/manager/catalog 四个字段；Content-Type: application/json；plugin.name=dsh-plugin-market；plug… | status=200 ok=True 缺字段=[] catalog=null(冷启动，符合契约 §2.1)  plugin.name=dsh-plugin-market plugin.version=1.0.0 manager.available=True host.dsh… | **PASS** |
-| 12 | `A4b` | `GET http://127.0.0.1:59459/plugin-market/catalog?query=dsh&pageSize=5` | HTTP 200；ok:true；含 catalog/page/categories/items；page.pageSize=5；items 数 ≤ 5；Content-Type: application/json | status=200 ok=True 缺字段=[] page.page=1 page.pageSize=5 page.total=4200 items=5 categories=23 catalog.count=4412 | **PASS** |
-| 13 | `A4c` | `GET http://127.0.0.1:59459/plugin-market/installed` | HTTP 200；ok:true；含 bundles/plugins；bundles 里能找到 name=dsh-plugin-market | status=200 ok=True 缺字段=[] bundles=12 含市场自身=1 plugins=188 | **PASS** |
-| 14 | `A5a` | `POST http://127.0.0.1:59459/plugin-market/install  Content-Type: application/json  body={"name":"evil/not-in-catalog-pkg","spec":"evil-no…` | HTTP 403；error.code=cross-origin | status=403 error.code=cross-origin | **PASS** |
-| 15 | `A5b` | `GET http://127.0.0.1:59459/plugin-market/install` | HTTP 405；error.code=method-not-allowed；响应头 Allow 含 POST | status=405 error.code=method-not-allowed Allow=POST | **PASS** |
-| 16 | `A6` | `POST http://127.0.0.1:59459/plugin-market/install  Origin=http://127.0.0.1:59459  body={"name":"evil/not-in-catalog-pkg","spec":"evil-not…` | HTTP 400；error.code=not-in-catalog（安全约束：只允许装目录内插件） | status=400 error.code=not-in-catalog message=这个插件不在目录里，已拒绝安装。 hint=市场只允许安装目录内的插件；先刷新目录再试。 | **PASS** |
-| 17 | `A7` | `POST http://127.0.0.1:59459/plugin-market/remove  Origin=http://127.0.0.1:59459  body={"name":"dsh-plugin-market"}` | HTTP 400；error.code=not-allowed；message 给出终端替代命令 | status=400 error.code=not-allowed message=市场不能卸载自己，请在终端执行 dsh plugin --profile marketcheck remove dsh-plugin-market | **PASS** |
-| 18 | `A8a` | `GET http://127.0.0.1:59459/plugin-market/catalog ; Start-Sleep 2 ; GET http://127.0.0.1:59459/plugin-market/catalog` | 两次 catalog.fetchedAt 相同且非空（TTL 10 分钟内不应重新抓取） | status#1=200 fetchedAt#1=2026-10-03T13:44:16.650Z ; status#2=200 fetchedAt#2=2026-10-03T13:44:16.650Z | **PASS** |
-| 19 | `A8b` | `POST http://127.0.0.1:59459/plugin-market/refresh  Origin=http://127.0.0.1:59459` | HTTP 200；ok:true；fetchedAt 与刷新前紧邻一次（fa2）不同且非空 | status=200 ok=True fetchedAt#3=2026-10-03T13:44:19.231Z（刷新前紧邻 fa2=2026-10-03T13:44:16.650Z，更早 fa1=2026-10-03T13:44:16.650Z） | **PASS** |
-| 20 | `A14a` | `POST http://127.0.0.1:59459/plugin-market/install  headers=Origin  body={"name":"evil/not-in-catalog-pkg","spec":"evil-not-in-catalog-pkg…` | 不返回 403 cross-origin；应继续走到 400 not-in-catalog | status=400 error.code=not-in-catalog | **PASS** |
-| 21 | `A14b` | `POST http://127.0.0.1:59459/plugin-market/install  headers=Sec-Fetch-Site  body={"name":"evil/not-in-catalog-pkg","spec":"evil-not-in-cat…` | 不返回 403 cross-origin；应继续走到 400 not-in-catalog | status=400 error.code=not-in-catalog | **PASS** |
-| 22 | `A14c` | `POST http://127.0.0.1:59459/plugin-market/install  Origin: http://evil.example  body={"name":"evil/not-in-catalog-pkg","spec":"evil-not-i…` | HTTP 403；error.code=cross-origin | status=403 error.code=cross-origin | **PASS** |
-| 23 | `A12` | `GET http://127.0.0.1:59459/plugin-market/definitely-not-a-route` | HTTP 404；error.code=not-found | status=404 error.code=not-found | **PASS** |
-| 24 | `A13` | `POST http://127.0.0.1:59459/plugin-market/install  70000 字节 name 字段` | HTTP 400；error.code=bad-request | status=400 error.code=bad-request | **PASS** |
-| 25 | `A15` | `POST http://127.0.0.1:59459/plugin-market/toggle  Content-Type: application/x-www-form-urlencoded  Origin=http://127.0.0.1:59459  body=na…` | HTTP 400；error.code=bad-request（同源已放行，所以失败原因必须是 Content-Type） | status=400 error.code=bad-request | **PASS** |
-| 26 | `E6` | `GET http://127.0.0.1:59457/__count   # 此前走过 A4b 首次 /catalog、A8a 两次 /catalog、A8b 一次 /refresh` | count == 2（首次抓取 1 + refresh 1；期间所有 /catalog 均命中缓存） | fixture 请求计数=2（期望 2） | **PASS** |
-| 27 | `E5-local` | `GET http://127.0.0.1:59459/plugin-market/catalog` | HTTP 200；ok:true；catalog.count 在 4412±0；catalog 含 count/updated/fetchedAt/source/stale；categories 非空；items[0] 含 id/na… | status=200 ok=True catalog.count=4412（期望 4412±0）catalog 缺字段=[] source=http://127.0.0.1:59457/plugins.json updated=2026-10-01 stale=False … | **PASS** |
-| 28 | `A11` | `node "E:\AI\DeepSeek Harness\Dsh\verify\adversarial-host.mjs" "E:\AI\DeepSeek Harness\Dsh\plugin-market\lib\index.js"` | exit=0；apply 不抛；/status 报 manager.available=false；/installed 返回空集合；安装类 POST 报 manager-unavailable | exit=0 | **PASS** |
-| 29 | `A2` | `GET <启动日志里的鉴权 URL>  →  解析 globalThis["__DSH_BOOT__"]  →  entries[] 中找 id === 'dsh-plugin-market'` | 存在该 entry；url 形如 plugins/??dsh-plugin-market/client.js&rev=…（契约写绝对 /plugins/…，实测为文档相对，两种都接受） | httpStatus=200 htmlLen=35348 shape=globalThis["__DSH_BOOT__"] entries=67 batches=3 entry=found url=plugins/??dsh-plugin-market/client.js&… | **PASS** |
-| 30 | `A3` | `GET http://127.0.0.1:59479/plugins/??dsh-plugin-market/client.js&rev=595c001c1b5f` | HTTP 200；正文含 __ModuleLoader__.load 且含 id:"dsh-plugin-market" | status=200 bytes=110971 hasModuleLoaderLoad=True hasId=True | **PASS** |
-| 31 | `A3b` | `GET http://127.0.0.1:59479/plugins/??dsh-plugin-market/client.js&rev=595c001c1b5f  →  [System.Text.Encoding]::UTF8.GetString(原始字节)  →  搜索…` | 解码后包含「插件市场」；且不含替换字符 U+FFFD（中文未变乱码） | utf8DecodedBytes=110971 contains插件市场=True U+FFFD个数=0 | **PASS** |
-| 32 | `E8-low` | `GET http://127.0.0.1:59479/plugin-market/installed  →  bundles[] 中 name=@feiyang666/dsh-usage-plugin` | 该 bundle 的 latest=1.0.0，updateAvailable=false | 找到=True 已装版本=1.18.0 latest=1.0.0 updateAvailable=False（期望 false） | **PASS** |
-| 33 | `E8-market` | `GET http://127.0.0.1:59479/plugin-market/installed  →  bundles[] 中筛选 market === true` | 恰好 1 条 market:true，且其 name === dsh-plugin-market | market:true 条数=1 name=dsh-plugin-market | **PASS** |
-| 34 | `A2` | `GET <启动日志里的鉴权 URL>  →  解析 globalThis["__DSH_BOOT__"]  →  entries[] 中找 id === 'dsh-plugin-market'` | 存在该 entry；url 形如 plugins/??dsh-plugin-market/client.js&rev=…（契约写绝对 /plugins/…，实测为文档相对，两种都接受） | httpStatus=200 htmlLen=35348 shape=globalThis["__DSH_BOOT__"] entries=67 batches=3 entry=found url=plugins/??dsh-plugin-market/client.js&… | **PASS** |
-| 35 | `A3` | `GET http://127.0.0.1:16748/plugins/??dsh-plugin-market/client.js&rev=595c001c1b5f` | HTTP 200；正文含 __ModuleLoader__.load 且含 id:"dsh-plugin-market" | status=200 bytes=110971 hasModuleLoaderLoad=True hasId=True | **PASS** |
-| 36 | `A3b` | `GET http://127.0.0.1:16748/plugins/??dsh-plugin-market/client.js&rev=595c001c1b5f  →  [System.Text.Encoding]::UTF8.GetString(原始字节)  →  搜索…` | 解码后包含「插件市场」；且不含替换字符 U+FFFD（中文未变乱码） | utf8DecodedBytes=110971 contains插件市场=True U+FFFD个数=0 | **PASS** |
-| 37 | `E8-high` | `GET http://127.0.0.1:16748/plugin-market/installed  →  bundles[] 中 name=@feiyang666/dsh-usage-plugin` | 该 bundle 的 latest=9.9.9，updateAvailable=true | 找到=True 已装版本=1.18.0 latest=9.9.9 updateAvailable=True（期望 true） | **PASS** |
-| 38 | `E8-market` | `GET http://127.0.0.1:16748/plugin-market/installed  →  bundles[] 中筛选 market === true` | 恰好 1 条 market:true，且其 name === dsh-plugin-market | market:true 条数=1 name=dsh-plugin-market | **PASS** |
-| 39 | `A2` | `GET <启动日志里的鉴权 URL>  →  解析 globalThis["__DSH_BOOT__"]  →  entries[] 中找 id === 'dsh-plugin-market'` | 存在该 entry；url 形如 plugins/??dsh-plugin-market/client.js&rev=…（契约写绝对 /plugins/…，实测为文档相对，两种都接受） | httpStatus=200 htmlLen=35348 shape=globalThis["__DSH_BOOT__"] entries=67 batches=3 entry=found url=plugins/??dsh-plugin-market/client.js&… | **PASS** |
-| 40 | `A3` | `GET http://127.0.0.1:2056/plugins/??dsh-plugin-market/client.js&rev=595c001c1b5f` | HTTP 200；正文含 __ModuleLoader__.load 且含 id:"dsh-plugin-market" | status=200 bytes=110971 hasModuleLoaderLoad=True hasId=True | **PASS** |
-| 41 | `A3b` | `GET http://127.0.0.1:2056/plugins/??dsh-plugin-market/client.js&rev=595c001c1b5f  →  [System.Text.Encoding]::UTF8.GetString(原始字节)  →  搜索「…` | 解码后包含「插件市场」；且不含替换字符 U+FFFD（中文未变乱码） | utf8DecodedBytes=110971 contains插件市场=True U+FFFD个数=0 | **PASS** |
-| 42 | `E7-fetch` | `Measure-Command { GET http://127.0.0.1:2056/plugin-market/catalog }   # 该宿主 boot 后第一次 /catalog` | HTTP 200；ok:true；端到端耗时 < 3000ms | status=200 耗时=550ms source=npm:dsh-plugin-catalog@2026.1003.4803 (registry.npmmirror.com) count=4412 | **PASS** |
-| 43 | `E5` | `GET http://127.0.0.1:2056/plugin-market/catalog` | HTTP 200；ok:true；catalog.count 在 4412±50；catalog 含 count/updated/fetchedAt/source/stale；categories 非空；items[0] 含 id/n… | status=200 ok=True catalog.count=4412（期望 4412±50）catalog 缺字段=[] source=npm:dsh-plugin-catalog@2026.1003.4803 (registry.npmmirror.com) upd… | **PASS** |
-| 44 | `E5-env` | `node "E:\AI\DeepSeek Harness\Dsh\verify\lib\netdiag.mjs" "https://awesome-dsh-plugin.com/plugins.json" 120000` | 耗时 > 15000ms 或直接失败 ⇒ 502 catalog-unavailable 是源可达性/超时预算问题，不是路由逻辑问题 | ok=True ms=32368 bytes=5298280（契约单次预算 15000ms） | **PASS** |
-| 45 | `E9` | `记录本次跑过的每条 --profile 目标（profile 初始化 / 两次 dsh plugin add / 4 次 dsh web 启动）` | 所有 --profile 目标均为 marketcheck；不出现 desktop 或 web；DSH_HOME 指向 _verify 内的独立目录 | 调用次数=6 目标集合=[marketcheck] 命中 desktop/web=0 DSH_HOME=E:\AI\DeepSeek Harness\Dsh\_verify\dshhome | **PASS** |
-| 46 | `E9-info-pkg` | `Get-FileHash "C:\Users\28062\.dsh\profiles\desktop\package.json" -Algorithm SHA256   # 前后各一次` | 记录前后哈希与内容，供 Lead 复核；本条不作通过判据（该 profile 同时被 GUI 会话持有） | before=6413CC433FE384E38979E4AFBA5A8208B753DADC526DDFC47A370120CCAB8AA3 after=6413CC433FE384E38979E4AFBA5A8208B753DADC526DDFC47A370120CCA… | **PASS** |
-| 47 | `E9-info` | `Get-FileHash "C:\Users\28062\.dsh\profiles\desktop\cordis.patch.yml" -Algorithm SHA256   # 前后各一次` | 记录前后哈希与内容差异，供 Lead 按内容定性；本条不作通过判据 | before=29C08D0FDAD957860DC55F2B7159884D8C823819EF0911C8D22843A7424DA125 after=29C08D0FDAD957860DC55F2B7159884D8C823819EF0911C8D22843A7424… | **PASS** |
+| 6 | `A1` | `/c call "D:\Software\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd" --profile "marketcheck" --port 25112 --no-open 1>"E:\AI\DeepSeek…` | 端口就绪；日志 FAILED 行 0；无被测包相关报错；无模块解析失败 | ready=True FAILED行=0 被测包报错行=0 模块解析失败行=0 | **PASS** |
+| 7 | `E4` | `GET http://127.0.0.1:25110/__reset` | status=200；ok:true；manager.available=true；catalog 为 null；期间 fixture 请求计数 +0 | status=200 ok=True manager.available=True catalog=null fixture请求数=0（期望 0） | **PASS** |
+| 8 | `A5-session` | `GET <启动日志里的鉴权 URL>  →  复用返回的 CookieContainer 发后续写请求` | HTTP 200 且拿到 >=1 个会话 cookie | status=200 cookie数=1 | **PASS** |
+| 9 | `A2` | `GET <启动日志里的鉴权 URL>  →  解析 globalThis["__DSH_BOOT__"]  →  entries[] 中找 id === 'dsh-plugin-market'` | 存在该 entry；url 形如 plugins/??dsh-plugin-market/client.js&rev=…（契约写绝对 /plugins/…，实测为文档相对，两种都接受） | httpStatus=200 htmlLen=35348 shape=globalThis["__DSH_BOOT__"] entries=67 batches=3 entry=found url=plugins/??dsh-plugin-market/client.js&rev=595c00… | **PASS** |
+| 10 | `A3` | `GET http://127.0.0.1:25112/plugins/??dsh-plugin-market/client.js&rev=595c001c1b5f` | HTTP 200；正文含 __ModuleLoader__.load 且含 id:"dsh-plugin-market" | status=200 bytes=110971 hasModuleLoaderLoad=True hasId=True | **PASS** |
+| 11 | `A3b` | `GET http://127.0.0.1:25112/plugins/??dsh-plugin-market/client.js&rev=595c001c1b5f  →  [System.Text.Encoding]::UTF8.GetString(原始字节)  →  搜索…` | 解码后包含「插件市场」；且不含替换字符 U+FFFD（中文未变乱码） | utf8DecodedBytes=110971 contains插件市场=True U+FFFD个数=0 | **PASS** |
+| 12 | `A4a` | `GET http://127.0.0.1:25112/plugin-market/status` | HTTP 200；ok:true；含 plugin/host/manager/catalog 四个字段；Content-Type: application/json；plugin.name=dsh-plugin-market；plug… | status=200 ok=True 缺字段=[] catalog=null(冷启动，符合契约 §2.1)  plugin.name=dsh-plugin-market plugin.version=1.0.0 manager.available=True host.dsh= contentT… | **PASS** |
+| 13 | `A4b` | `GET http://127.0.0.1:25112/plugin-market/catalog?query=dsh&pageSize=5` | HTTP 200；ok:true；含 catalog/page/categories/items；page.pageSize=5；items 数 ≤ 5；Content-Type: application/json | status=200 ok=True 缺字段=[] page.page=1 page.pageSize=5 page.total=4200 items=5 categories=23 catalog.count=4412 | **PASS** |
+| 14 | `A4c` | `GET http://127.0.0.1:25112/plugin-market/installed` | HTTP 200；ok:true；含 bundles/plugins；bundles 里能找到 name=dsh-plugin-market | status=200 ok=True 缺字段=[] bundles=12 含市场自身=1 plugins=188 | **PASS** |
+| 15 | `A5a` | `POST http://127.0.0.1:25112/plugin-market/install  # 不带 Origin / Sec-Fetch-Site，但复用已鉴权会话 cookie；body={"name":"evil/not-in-catalog-pkg","s…` | 不得判为 cross-origin；必须进到业务逻辑 → HTTP 400 error.code=not-in-catalog | status=400 error.code=not-in-catalog（若为 403 cross-origin 即线上缺陷复现） | **PASS** |
+| 16 | `A5c` | `POST http://127.0.0.1:25112/plugin-market/install  Origin: https://evil.example  body={"name":"evil/not-in-catalog-pkg","spec":"evil-not-…` | HTTP 403；error.code=cross-origin；hint 里如实出现 Origin=https://evil.example | status=403 error.code=cross-origin hint含Origin信号=True hint=市场只接受来自本页面的写请求。本次收到：Origin=https://evil.example、Sec-Fetch-Site=（无）、来源地址=127.0.0.1。在本页内重试… | **PASS** |
+| 17 | `A5d` | `POST http://127.0.0.1:25112/plugin-market/install  Sec-Fetch-Site: cross-site  body={"name":"evil/not-in-catalog-pkg","spec":"evil-not-in…` | HTTP 403；error.code=cross-origin | status=403 error.code=cross-origin | **PASS** |
+| 18 | `A5e` | `POST http://127.0.0.1:25112/plugin-market/install  Origin=http://127.0.0.1:25112  body={"name":"evil/not-in-catalog-pkg","spec":"evil-not…` | 不得判为 cross-origin；必须走到 HTTP 400 error.code=not-in-catalog | status=400 error.code=not-in-catalog | **PASS** |
+| 19 | `A5f` | `POST http://127.0.0.1:25112/plugin-market/install  Origin: http://127.0.0.1:3000  body={"name":"evil/not-in-catalog-pkg","spec":"evil-not…` | HTTP 403；error.code=cross-origin | status=403 error.code=cross-origin | **PASS** |
+| 20 | `A5g` | `POST http://127.0.0.1:25112/plugin-market/install  # 不带会话 cookie、不带 Origin；body={"name":"evil/not-in-catalog-pkg","spec":"evil-not-in-cat…` | 要么非 403（宿主信任层未拦），要么是 403 且 body 为空；若出现插件形状的 JSON 403，说明插件在收无 cookie 请求，需重新定性 | status=400 body长度=107 属宿主信任层=False body前80字={"ok":false,"error":{"code":"not-in-catalog","message":"这个插件不在目录里，已拒绝安装。","hint" | **PASS** |
+| 21 | `A5b` | `GET http://127.0.0.1:25112/plugin-market/install` | HTTP 405；error.code=method-not-allowed；响应头 Allow 含 POST | status=405 error.code=method-not-allowed Allow=POST | **PASS** |
+| 22 | `A6` | `POST http://127.0.0.1:25112/plugin-market/install  Origin=http://127.0.0.1:25112  body={"name":"evil/not-in-catalog-pkg","spec":"evil-not…` | HTTP 400；error.code=not-in-catalog（安全约束：只允许装目录内插件） | status=400 error.code=not-in-catalog message=这个插件不在目录里，已拒绝安装。 hint=市场只允许安装目录内的插件；先刷新目录再试。 | **PASS** |
+| 23 | `A7` | `POST http://127.0.0.1:25112/plugin-market/remove  Origin=http://127.0.0.1:25112  body={"name":"dsh-plugin-market"}` | HTTP 400；error.code=not-allowed；message 给出终端替代命令 | status=400 error.code=not-allowed message=市场不能卸载自己，请在终端执行 dsh plugin --profile marketcheck remove dsh-plugin-market | **PASS** |
+| 24 | `A8a` | `GET http://127.0.0.1:25112/plugin-market/catalog ; Start-Sleep 2 ; GET http://127.0.0.1:25112/plugin-market/catalog` | 两次 catalog.fetchedAt 相同且非空（TTL 10 分钟内不应重新抓取） | status#1=200 fetchedAt#1=2026-10-03T14:18:05.007Z ; status#2=200 fetchedAt#2=2026-10-03T14:18:05.007Z | **PASS** |
+| 25 | `A8b` | `POST http://127.0.0.1:25112/plugin-market/refresh  Origin=http://127.0.0.1:25112` | HTTP 200；ok:true；fetchedAt 与刷新前紧邻一次（fa2）不同且非空 | status=200 ok=True fetchedAt#3=2026-10-03T14:18:07.674Z（刷新前紧邻 fa2=2026-10-03T14:18:05.007Z，更早 fa1=2026-10-03T14:18:05.007Z） | **PASS** |
+| 26 | `A14a` | `POST http://127.0.0.1:25112/plugin-market/install  headers=Origin  body={"name":"evil/not-in-catalog-pkg","spec":"evil-not-in-catalog-pkg…` | 不返回 403 cross-origin；应继续走到 400 not-in-catalog | status=400 error.code=not-in-catalog | **PASS** |
+| 27 | `A14b` | `POST http://127.0.0.1:25112/plugin-market/install  headers=Sec-Fetch-Site  body={"name":"evil/not-in-catalog-pkg","spec":"evil-not-in-cat…` | 不返回 403 cross-origin；应继续走到 400 not-in-catalog | status=400 error.code=not-in-catalog | **PASS** |
+| 28 | `A12` | `GET http://127.0.0.1:25112/plugin-market/definitely-not-a-route` | HTTP 404；error.code=not-found | status=404 error.code=not-found | **PASS** |
+| 29 | `A13` | `POST http://127.0.0.1:25112/plugin-market/install  70000 字节 name 字段` | HTTP 400；error.code=bad-request | status=400 error.code=bad-request | **PASS** |
+| 30 | `A15` | `POST http://127.0.0.1:25112/plugin-market/toggle  Content-Type: application/x-www-form-urlencoded  Origin=http://127.0.0.1:25112  body=na…` | HTTP 400；error.code=bad-request（同源已放行，所以失败原因必须是 Content-Type） | status=400 error.code=bad-request | **PASS** |
+| 31 | `A5-guard` | `node "E:\AI\DeepSeek Harness\Dsh\verify\origin-guard.test.mjs"` | exit=0；输出含「isSameOrigin 判定矩阵：17/17 通过」与「全部通过」 | exit=0 含17/17=True | **PASS** |
+| 32 | `E6` | `GET http://127.0.0.1:25110/__count   # 此前走过 A4b 首次 /catalog、A8a 两次 /catalog、A8b 一次 /refresh` | count == 2（首次抓取 1 + refresh 1；期间所有 /catalog 均命中缓存） | fixture 请求计数=2（期望 2） | **PASS** |
+| 33 | `E5-local` | `GET http://127.0.0.1:25112/plugin-market/catalog` | HTTP 200；ok:true；catalog.count 在 4412±0；catalog 含 count/updated/fetchedAt/source/stale；categories 非空；items[0] 含 id/na… | status=200 ok=True catalog.count=4412（期望 4412±0）catalog 缺字段=[] source=http://127.0.0.1:25110/plugins.json updated=2026-10-01 stale=False fetchedAt=… | **PASS** |
+| 34 | `A11` | `node "E:\AI\DeepSeek Harness\Dsh\verify\adversarial-host.mjs" "E:\AI\DeepSeek Harness\Dsh\plugin-market\lib\index.js"` | exit=0；apply 不抛；/status 报 manager.available=false；/installed 返回空集合；安装类 POST 报 manager-unavailable | exit=0 | **PASS** |
+| 35 | `A2` | `GET <启动日志里的鉴权 URL>  →  解析 globalThis["__DSH_BOOT__"]  →  entries[] 中找 id === 'dsh-plugin-market'` | 存在该 entry；url 形如 plugins/??dsh-plugin-market/client.js&rev=…（契约写绝对 /plugins/…，实测为文档相对，两种都接受） | httpStatus=200 htmlLen=35348 shape=globalThis["__DSH_BOOT__"] entries=67 batches=3 entry=found url=plugins/??dsh-plugin-market/client.js&rev=595c00… | **PASS** |
+| 36 | `A3` | `GET http://127.0.0.1:55343/plugins/??dsh-plugin-market/client.js&rev=595c001c1b5f` | HTTP 200；正文含 __ModuleLoader__.load 且含 id:"dsh-plugin-market" | status=200 bytes=110971 hasModuleLoaderLoad=True hasId=True | **PASS** |
+| 37 | `A3b` | `GET http://127.0.0.1:55343/plugins/??dsh-plugin-market/client.js&rev=595c001c1b5f  →  [System.Text.Encoding]::UTF8.GetString(原始字节)  →  搜索…` | 解码后包含「插件市场」；且不含替换字符 U+FFFD（中文未变乱码） | utf8DecodedBytes=110971 contains插件市场=True U+FFFD个数=0 | **PASS** |
+| 38 | `E8-low` | `GET http://127.0.0.1:55343/plugin-market/installed  →  bundles[] 中 name=@feiyang666/dsh-usage-plugin` | 该 bundle 的 latest=1.0.0，updateAvailable=false | 找到=True 已装版本=1.18.0 latest=1.0.0 updateAvailable=False（期望 false） | **PASS** |
+| 39 | `E8-market` | `GET http://127.0.0.1:55343/plugin-market/installed  →  bundles[] 中筛选 market === true` | 恰好 1 条 market:true，且其 name === dsh-plugin-market | market:true 条数=1 name=dsh-plugin-market | **PASS** |
+| 40 | `A2` | `GET <启动日志里的鉴权 URL>  →  解析 globalThis["__DSH_BOOT__"]  →  entries[] 中找 id === 'dsh-plugin-market'` | 存在该 entry；url 形如 plugins/??dsh-plugin-market/client.js&rev=…（契约写绝对 /plugins/…，实测为文档相对，两种都接受） | httpStatus=200 htmlLen=35348 shape=globalThis["__DSH_BOOT__"] entries=67 batches=3 entry=found url=plugins/??dsh-plugin-market/client.js&rev=595c00… | **PASS** |
+| 41 | `A3` | `GET http://127.0.0.1:55362/plugins/??dsh-plugin-market/client.js&rev=595c001c1b5f` | HTTP 200；正文含 __ModuleLoader__.load 且含 id:"dsh-plugin-market" | status=200 bytes=110971 hasModuleLoaderLoad=True hasId=True | **PASS** |
+| 42 | `A3b` | `GET http://127.0.0.1:55362/plugins/??dsh-plugin-market/client.js&rev=595c001c1b5f  →  [System.Text.Encoding]::UTF8.GetString(原始字节)  →  搜索…` | 解码后包含「插件市场」；且不含替换字符 U+FFFD（中文未变乱码） | utf8DecodedBytes=110971 contains插件市场=True U+FFFD个数=0 | **PASS** |
+| 43 | `E8-high` | `GET http://127.0.0.1:55362/plugin-market/installed  →  bundles[] 中 name=@feiyang666/dsh-usage-plugin` | 该 bundle 的 latest=9.9.9，updateAvailable=true | 找到=True 已装版本=1.18.0 latest=9.9.9 updateAvailable=True（期望 true） | **PASS** |
+| 44 | `E8-market` | `GET http://127.0.0.1:55362/plugin-market/installed  →  bundles[] 中筛选 market === true` | 恰好 1 条 market:true，且其 name === dsh-plugin-market | market:true 条数=1 name=dsh-plugin-market | **PASS** |
+| 45 | `A2` | `GET <启动日志里的鉴权 URL>  →  解析 globalThis["__DSH_BOOT__"]  →  entries[] 中找 id === 'dsh-plugin-market'` | 存在该 entry；url 形如 plugins/??dsh-plugin-market/client.js&rev=…（契约写绝对 /plugins/…，实测为文档相对，两种都接受） | httpStatus=200 htmlLen=35348 shape=globalThis["__DSH_BOOT__"] entries=67 batches=3 entry=found url=plugins/??dsh-plugin-market/client.js&rev=595c00… | **PASS** |
+| 46 | `A3` | `GET http://127.0.0.1:55374/plugins/??dsh-plugin-market/client.js&rev=595c001c1b5f` | HTTP 200；正文含 __ModuleLoader__.load 且含 id:"dsh-plugin-market" | status=200 bytes=110971 hasModuleLoaderLoad=True hasId=True | **PASS** |
+| 47 | `A3b` | `GET http://127.0.0.1:55374/plugins/??dsh-plugin-market/client.js&rev=595c001c1b5f  →  [System.Text.Encoding]::UTF8.GetString(原始字节)  →  搜索…` | 解码后包含「插件市场」；且不含替换字符 U+FFFD（中文未变乱码） | utf8DecodedBytes=110971 contains插件市场=True U+FFFD个数=0 | **PASS** |
+| 48 | `E7-fetch` | `Measure-Command { GET http://127.0.0.1:55374/plugin-market/catalog }   # 该宿主 boot 后第一次 /catalog` | HTTP 200；ok:true；端到端耗时 < 3000ms | status=200 耗时=527ms source=npm:dsh-plugin-catalog@2026.1003.4803 (registry.npmmirror.com) count=4412 | **PASS** |
+| 49 | `E5` | `GET http://127.0.0.1:55374/plugin-market/catalog` | HTTP 200；ok:true；catalog.count 在 4412±50；catalog 含 count/updated/fetchedAt/source/stale；categories 非空；items[0] 含 id/n… | status=200 ok=True catalog.count=4412（期望 4412±50）catalog 缺字段=[] source=npm:dsh-plugin-catalog@2026.1003.4803 (registry.npmmirror.com) updated=2026-… | **PASS** |
+| 50 | `E5-env` | `node "E:\AI\DeepSeek Harness\Dsh\verify\lib\netdiag.mjs" "https://awesome-dsh-plugin.com/plugins.json" 120000` | 耗时 > 15000ms 或直接失败 ⇒ 502 catalog-unavailable 是源可达性/超时预算问题，不是路由逻辑问题 | ok=True ms=65114 bytes=5298280（契约单次预算 15000ms） | **PASS** |
+| 51 | `E9` | `记录本次跑过的每条 --profile 目标（profile 初始化 / 两次 dsh plugin add / 4 次 dsh web 启动）` | 所有 --profile 目标均为 marketcheck；不出现 desktop 或 web；DSH_HOME 指向 _verify 内的独立目录 | 调用次数=6 目标集合=[marketcheck] 命中 desktop/web=0 DSH_HOME=E:\AI\DeepSeek Harness\Dsh\_verify\dshhome | **PASS** |
+| 52 | `E9-info-pkg` | `Get-FileHash "C:\Users\28062\.dsh\profiles\desktop\package.json" -Algorithm SHA256   # 前后各一次` | 记录前后哈希与内容，供 Lead 复核；本条不作通过判据（该 profile 同时被 GUI 会话持有） | before=174CBD943FB6091E037E2D69ED557ACB85E2C29C1C7C781A01C0363C10935A7D after=174CBD943FB6091E037E2D69ED557ACB85E2C29C1C7C781A01C0363C10935A7D chan… | **PASS** |
+| 53 | `E9-info` | `Get-FileHash "C:\Users\28062\.dsh\profiles\desktop\cordis.patch.yml" -Algorithm SHA256   # 前后各一次` | 记录前后哈希与内容差异，供 Lead 按内容定性；本条不作通过判据 | before=5B9826E192DDD9052754DC36AFA972A8E90F40A0A77C2400E662FD87899CE642 after=5B9826E192DDD9052754DC36AFA972A8E90F40A0A77C2400E662FD87899CE642 chan… | **PASS** |
 
 ### 3.1 Lead 指定 10 条的对应关系
 
@@ -126,7 +137,7 @@ cmd /c call "…\bin\dsh.cmd" --profile "marketcheck" --port 1539 --no-open 1>ou
 | 4 `/status` 冷启动 `manager.available=true`、`catalog=null`、零网络抓取 | `E4` | PASS（用 fixture 计数器实测抓取次数 = 0） |
 | 5 `/catalog` 真实抓取内容 | `E5` + `E5-local` + `E7-fetch` | PASS，count=4412，23 个分类，items[0] 字段齐全 |
 | 6 缓存行为 | `A8a` + `A8b` + `E6` | PASS（`E6` 用请求计数证明整轮只抓 2 次） |
-| 7 越权与错误路径 | `A5a` `A5b` `A6` `A7` `A12` `A13` `A15` `A14a/b/c` | PASS |
+| 7 越权与错误路径 | `A5-session` `A5a` `A5b` `A5c` `A5d` `A5e` `A5f` `A5g` `A5-guard` `A6` `A7` `A12` `A13` `A15` `A14a/b` | PASS（§5.5 已按新契约重写并加桌面壳回归项，见 §11） |
 | 8 `updateAvailable` 双向 + `market:true` | `E8-low` `E8-high` `E8-market` | PASS |
 | 9 不碰真实 profile | `E9` | PASS（改为断言「我的调用目标」而非哈希相等，理由见 §7） |
 | 10 收尾释放 | 每次 run 的 cleanup 段 | PASS，4/4 端口释放，残留占用 0 |
@@ -225,13 +236,28 @@ A6 curl  ：status=400 body={"ok":false,"error":{"code":"not-in-catalog","messag
 
 `verify/selfcheck.ps1` 把同一套断言函数指向**故意违反契约的 stub**，并断言：
 
-1. 15 条市场断言**全部 FAIL**（不能有「意外 PASS」——那说明断言无效）；
-2. boot 图「好/坏」两向：A2/A3/A3b 必须一绿一红；
-3. **FAIL 要有道理**：`A6` 必须读到 `error.code=cross-origin`、`A14c` 必须读到 `internal`，且 curl 复核正文里也有同样的码。
+1. 18 条契约类断言**全部 FAIL**（不能有「意外 PASS」——那说明断言无效）；
+2. 1 条分层诊断断言（`A5g`）按预期 PASS——它判的是「这是哪一层的 403」，不是契约判据，硬要求它红反而是把诊断当判据；
+3. boot 图「好/坏」两向：A2/A3/A3b 必须一绿一红；
+4. **FAIL 要有道理**：`A6` 必须读到 `error.code=cross-origin`、`A5c` 必须读到 `internal`，且 curl 复核正文里也有同样的码。
 
-这三条里第 3 条是补强——**没有它，首轮那 9 条「因为读不到正文而 FAIL」会被自检误判为「断言有效」**。selfcheck 现为 PASS。
+第 4 条是补强——**没有它，首轮那 9 条「因为读不到正文而 FAIL」会被自检误判为「断言有效」**。selfcheck 现为 PASS。
 
-自检还抓出两个真问题：`A8b` 原先与「最早一次」而非「紧邻上一次」的 `fetchedAt` 比较（假阳性，已改为与 `fa2` 比较）；boot 断言里 `'…' + $AssertId + '"'` 在**参数模式**下 `+` 不是运算符，参数错位导致 `[bool]$Pass` 收到字符串（已加括号）。
+自检抓出过的真问题：`A8b` 原先与「最早一次」而非「紧邻上一次」的 `fetchedAt` 比较（假阳性，已改为与 `fa2` 比较）；boot 断言里 `'…' + $AssertId + '"'` 在**参数模式**下 `+` 不是运算符，参数错位导致 `[bool]$Pass` 收到字符串（已加括号）；wrong-stub 用 `origin === 'http://evil.example'` 全等匹配，而断言侧发的是 `https://evil.example`，导致 `A5c` 落到别的分支、正文变空（已改为按主机名 `includes` 匹配）——**这条是自检自己抓出来的：一致性检查发现「A5c 读不到 error.code」，才暴露出 stub 匹配写窄了。**
+
+### 5.8 不带 cookie 测写接口会测错层（本轮新增的工具缺陷）
+
+- **怎么发现**：Lead 在定性线上 403 时指出——宿主的写接口有**两层**防护，不区分就会测错层：
+  - **第 1 层 宿主信任层**：未带会话凭据的请求会被它以**空 body 403** 拦掉，根本到不了插件；
+  - **第 2 层 插件守卫 `isSameOrigin`**：只有进到插件里的请求才由它判定来源。
+  我此前所有 POST 断言都是**每次新建 CookieContainer**、不复用会话，等于在没有会话的前提下测守卫。那时拿到的 403 究竟是哪一层，无法自证。
+- **怎么修**：
+  1. `Invoke-HttpProbe` 增加 `-CookieContainer`，可让多个请求落在同一条会话上；
+  2. 新增 `New-AuthSession`（GET 带 token 的 URL → 303 → Set-Cookie → 复用容器），并在 boot 后立刻建立会话，断言 `A5-session` 要求「200 且拿到 ≥1 个会话 cookie」；
+  3. `Invoke-MarketRouteChecks` 增加 `-Session`，§5.5 的写接口断言全部走已鉴权会话，curl 交叉复核也带上同一 cookie；
+  4. 新增 `A5g` 把「未鉴权那一发」单独记成诊断：只允许出现「非 403」或「403 且 body 为空」两种形态，**若出现插件形状的 JSON 403 就要重新定性**。
+- **本轮实测（诚实记录，与预期不同）**：在我这套 `dsh web` scratch profile 里，未鉴权写请求 **status=400 且 body 长度 107**，即**到达了插件的业务逻辑**——说明这个配置下宿主信任层**并没有**拦 `/plugin-market/*`。所以「两层」在本环境里只有第 2 层实际生效；A5g 因此判 PASS（形态合规）。
+  结论不变：会话化测量是必须的（契约 §5.5 已把它写成前提），因为在桌面壳/其它配置下第 1 层确实存在，而**不分层就无法判断 403 来自谁**。这条也已写进 `lib/MarketChecks.ps1` 的头部说明。
 
 ---
 
@@ -356,8 +382,11 @@ pwsh -File scripts/verify-market.ps1 -SkipLive
 | `verify-20261003-213248` | 45 PASS / 0 FAIL | 修完 cookie 后 |
 | `verify-20261003-213545` | 46 PASS / 0 FAIL | 加 `E7-fetch` |
 | `verify-20261003-213818` | 45 PASS / 1 FAIL | `E9` 因外部会话改写 desktop `package.json` 而红 → 促使 `E9` 重新设计（§7） |
-| **`verify-20261003-214407`** | **47 PASS / 0 FAIL** | **最终轮** |
+| `verify-20261003-214407` | 47 PASS / 0 FAIL | 修复前基线轮。**不覆盖桌面壳形状**，故未发现线上「Electron 写操作全 403」缺陷 |
 | `selfcheck-20261003-212959` / `213804` | PASS | 断言自检（含「FAIL 要有道理」补强） |
+| `selfcheck-20261003-221659` | FAIL（自检自身抓出） | wrong-stub 用 `http://evil.example` 全等匹配、断言发的是 `https://…`，`A5c` 落到别的分支 → 已改 `includes` |
+| `selfcheck-20261003-221734` | PASS | 新期望矩阵：18 条契约断言全红 + `A5g` 诊断绿 |
+| **`verify-20261003-221755`** | **53 PASS / 0 FAIL** | **修复后复验最终轮（本报告结论所依据的一轮）** |
 
 ---
 
@@ -365,9 +394,90 @@ pwsh -File scripts/verify-market.ps1 -SkipLive
 
 | 项 | 状态 |
 |---|---|
-| 后台宿主进程 | 4/4 已 `taskkill /T /F`；`Get-NetTCPConnection -State Listen` 对 `2056/16748/59459/59479` 及历轮全部端口（2725、17435、53952、64768、3631、2540、44801、32586、59370）复核 **listen=0** |
+| 后台宿主进程 | 4/4 已 `taskkill /T /F`；`Get-NetTCPConnection -State Listen` 对本轮 `25112/55343/55362/55374` 及历轮全部端口复核 **listen=0** |
 | fixture / stub Node 进程 | 全部随 `Stop-NodeServer` 结束，无遗留 |
 | 临时 profile 路径 | `_verify\dshhome\profiles\{marketcheck, chaincheck, drill, mk1, probe1}` |
 | 对照插件副本 | `_verify\vendor\dsh-usage-plugin`（从 desktop `node_modules` 复制，只读用途） |
-| 真实 `C:\Users\28062\.dsh` | 只读访问（取 SHA256 与 operation 目录清单）；`desktop` 的两处变化均为外部会话所为，见 §7 |
+| 真实 `C:\Users\28062\.dsh` | 只读访问（取 SHA256 与 operation 目录清单）；`desktop` 的变化均为外部会话所为，见 §7 与 §11.5 |
 | `plugin-market/**` | **未修改**（本轮所有写操作在 `verify/**`、`scripts/verify-market.ps1`、`_verify/**`） |
+
+---
+
+## 11. 桌面壳兼容性（v1.0.0 修复后复验）
+
+### 11.1 与上一轮 47/47 的关系
+
+上一轮（`verify-20261003-214407`，47/47）**没有覆盖桌面壳形状**：我的 §5.5 断言当时写的是旧契约「无 `Origin` 且无 `Sec-Fetch-Site` → 403」，且**每一发写请求都新建 CookieContainer、不带会话 cookie**。这两点叠加，使得：
+
+- 我测的形状恰好是「被守卫拒绝」的那一种，于是断言通过；
+- 而真实桌面壳转发过来的请求也是「无 Origin、无 Sec-Fetch-Site」，却被同一段守卫拒掉 → 用户在 Electron 里所有写操作 403。
+
+**即：一轮全绿的验收漏掉了真实用户路径。** 所以本轮不是重复验收，而是**把真实路径补进断言**后重跑。53/53 覆盖 47/47 的全部内容，并新增 7 条（`A5-session`、`A5a` 重写、`A5c`、`A5d`、`A5e`、`A5f`、`A5g`、`A5-guard`）。
+
+### 11.2 根因（源码级证据）
+
+桌面端页面 origin 是自定义协议 `dsh-app://app`，请求由 Electron 主进程转发给本地宿主。`dsh-desktop-host` 的 `forwardWebRequest` 在转发前会**主动删除**这些头：
+
+```js
+if (origin !== null && origin !== "dsh-app://app") return new Response(null, { status: 403 });
+for (const name of ["host", "origin", "cookie", "sec-fetch-site"]) headers.delete(name);
+headers.set("cookie", cookie);
+```
+
+而修复前的守卫把「既无 `Origin` 又无 `Sec-Fetch-Site`」直接当跨站拒绝 —— 于是**桌面壳的写请求 100% 被拦**。组件层「发生在哪：打开市场页，任何写操作（安装/卸载/开关/刷新目录）」与这段代码完全对应。结论：**是守卫与官方桌面壳不兼容，不是用户操作问题。**
+
+### 11.3 修复（`plugin-market/lib/http.js` 的 `isSameOrigin`）
+
+判定顺序改为（契约 §1 已同步）：
+
+1. `Origin` 为 `dsh-app://app` 或 `dsh-app://shell` → 放行（真实桌面壳 origin，页面脚本伪造不了）；
+2. `Sec-Fetch-Site: cross-site` → 拒绝；
+3. 有 `Origin` → 其 host 必须与 `Host` 一致，否则拒绝；
+4. **两个头都不存在 → 仅当来源是回环地址时放行**（← 桌面壳形状走这条）；
+5. 只有 `Sec-Fetch-Site` → 仅 `same-origin` 放行。
+
+拒绝时 `hint` 如实带上收到的 `Origin` / `Sec-Fetch-Site` / 来源地址，便于下次一眼定性。
+
+### 11.4 两层防护的区别（这是本轮最重要的测量前提）
+
+| | 第 1 层：宿主信任层 | 第 2 层：插件守卫 `isSameOrigin` |
+|---|---|---|
+| 拦谁 | 未带**会话凭据**的请求 | 进了插件、但**有明确外站证据**的请求 |
+| 拒绝形态 | **空 body 403**（不是我们的 JSON） | 403 + 我们的 `{ok:false,error:{code:'cross-origin'}}` |
+| 能否被我的断言看到 | 只能看到「403 且 body 空」 | 能读到 `error.code` / `message` / `hint` |
+| 正确测法 | 不要用它做结论 | **必须先在 token→303→cookie 会话上测** |
+
+**不分层就会测错层**：拿一个不带 cookie 的 403 去证明「插件的跨站保护有效」，实际上证明的是宿主信任层在工作，插件守卫有没有 bug 完全没测到。这就是 §5.8 记录的工具缺陷。
+
+### 11.5 修复后的独立证据（本轮原始输出）
+
+```
+A5-session  status=200 cookie数=1                                    ← 已鉴权会话建立（测量前提）
+A5a  status=400 error.code=not-in-catalog                            ← 桌面壳形状被放行，走进业务逻辑（关键回归项）
+A5c  status=403 error.code=cross-origin
+     hint=…本次收到：Origin=https://evil.example、Sec-Fetch-Site=（无）、来源地址=127.0.0.1。…   ← 外站 Origin 被拒 + 信号如实回传
+A5d  status=403 error.code=cross-origin                              ← Sec-Fetch-Site: cross-site 被拒
+A5e  status=400 error.code=not-in-catalog                            ← 同源 Origin 放行
+A5f  status=403 error.code=cross-origin                              ← 同站不同端口被拒
+A5g  status=400 body长度=107 属宿主信任层=False                       ← 分层诊断：本环境未鉴权也到了插件（诚实记录，见 §5.8）
+A5-guard  exit=0 含17/17=True                                        ← 判定矩阵单测全过
+A3b  utf8DecodedBytes=110971 contains插件市场=True U+FFFD个数=0        ← 修复未影响客户端 bundle
+E5   catalog.count=4412 source=npm:dsh-plugin-catalog@2026.1003.4803
+E7-fetch status=200 耗时=527ms                                       ← 真实抓取仍远低于 3s
+```
+
+完整原始输出见 `_verify/logs/verify-20261003-221755.evidence.log`。
+
+我另核对了两点，均无问题：
+
+1. **判定矩阵没有漏形状**：17 条含桌面壳（`dsh-app://app`/`shell`）、`dsh-app://evil`、无 `host` 且回环、`::1`、`::ffff:127.0.0.1`、无 `socket` 信息、同站不同端口、`same-site`/`none`/`cross-site`、非法 Origin 字符串。我额外用真实宿主端到端补了 4 条真实 HTTP 形状（A5c/A5d/A5e/A5f），与单测结论一致。
+2. **桌面壳转发还带别的头会不会再次误判**：`forwardWebRequest` 只删除那 4 个头并补 `Cookie`；我实测的「无 Origin + 无 Sec-Fetch-Site + 回环」就是它的最终形态，判定第 4 条覆盖。若未来它改为从非回环地址转发（例如走 127.0.0.1 之外的接口），第 4 条会拒 — 这是一个**接口约定依赖**，建议在 `forwardWebRequest` 改动时回归 `origin-guard.test.mjs`。
+
+### 11.6 修复后 desktop 现状（只读核对）
+
+本轮 `E9` 仍 PASS（我的 6 次 `dsh` 调用全部指向 `marketcheck`，命中 `desktop/web` = 0）。`E9-info-pkg` 记录到真实 desktop profile 在此期间被 Lead 按 task-4 装入了市场：
+
+- `desktop/package.json`：`174CBD943FB6091E037E2D69ED557ACB85E2C29C1C7C781A01C0363C10935A7D`，bundles 末尾出现 `dsh-plugin-market`
+- `desktop/cordis.patch.yml`：`5B9826E192DDD9052754DC36AFA972A8E90F40A0A77C2400E662FD87899CE642`（前后一致）
+
+均为外部会话所为，非本工具。

@@ -241,6 +241,42 @@ function Get-AuthUrlFromLog {
   return $null
 }
 
+# ---------------------------------------------------------------- 已鉴权会话
+# 为什么单列一个函数：宿主的写接口有**两层**防护，不区分就会测错层。
+#   第 1 层 = 宿主信任层：未带会话 cookie 的请求会被它以**空 body 403** 拦掉；
+#   第 2 层 = 插件守卫（isSameOrigin）：只有进到插件里的请求才由它判定。
+# 因此测 §5.5 的写接口必须先用「带 token 的 URL → 303 → Set-Cookie」把会话建立起来，
+# 再用同一个 CookieContainer 发后续请求；否则测的是第 1 层，结论对插件毫无意义。
+function New-AuthSession {
+  param(
+    [Parameter(Mandatory)][string]$AuthUrl,
+    [int]$TimeoutSec = 30
+  )
+  $cc = New-Object System.Net.CookieContainer
+  $probe = Invoke-HttpProbe -Uri $AuthUrl -CookieContainer $cc -TimeoutSec $TimeoutSec
+  $cookies = @()
+  try {
+    foreach ($c in $cc.GetCookies([uri]$AuthUrl)) { $cookies += "$($c.Name)=$($c.Value)" }
+  } catch { }
+  return [pscustomobject]@{
+    CookieContainer = $cc
+    Status          = $probe.Status
+    Cookies         = $cookies
+    CookieCount     = $cookies.Count
+    Ok              = (($probe.Status -eq 200) -and ($cookies.Count -gt 0))
+  }
+}
+
+# 把 CookieContainer 里的 cookie 拼成请求头字符串，供 curl 交叉复核复用同一条会话。
+function Get-CookieHeader($CookieContainer, [string]$Uri) {
+  if ($null -eq $CookieContainer) { return '' }
+  try {
+    $parts = @()
+    foreach ($c in $CookieContainer.GetCookies([uri]$Uri)) { $parts += "$($c.Name)=$($c.Value)" }
+    return ($parts -join '; ')
+  } catch { return '' }
+}
+
 # ---------------------------------------------------------------- HTTP
 #
 # 直接用 System.Net.HttpWebRequest，不用 Invoke-WebRequest。
@@ -257,6 +293,9 @@ function Invoke-HttpProbe {
     [hashtable]$Headers = @{},
     [string]$Body = $null,
     [string]$ContentType = 'application/json',
+    # 传入共享的 CookieContainer 即可复用同一条已鉴权会话。测宿主的写接口必须这样传：
+    # 否则测到的是宿主的信任层（未鉴权会被它以空 body 403 拦掉），而不是插件自己的守卫。
+    [System.Net.CookieContainer]$CookieContainer = $null,
     [int]$TimeoutSec = 30
   )
   $res = [pscustomobject]@{
@@ -273,7 +312,8 @@ function Invoke-HttpProbe {
     # 必须给一个 CookieContainer：首页鉴权是「带 token 的 URL → 303 重定向 → Set-Cookie →
     # 带 cookie 再取文档」。HttpWebRequest 不像 Invoke-WebRequest 会自动建 cookie 容器，
     # 不设它就会在重定向后丢 cookie，于是首页变成 401（改用 HttpWebRequest 后踩过这个坑）。
-    $req.CookieContainer = New-Object System.Net.CookieContainer
+    # 传了共享容器就用它，让多个请求落在同一条已鉴权会话上。
+    $req.CookieContainer = if ($null -ne $CookieContainer) { $CookieContainer } else { New-Object System.Net.CookieContainer }
     $req.UserAgent = 'dsh-market-verifier/1.0'
     # 不主动请求压缩：让正文是可读的 JSON，避免解压环节引入变量
     $req.AutomaticDecompression = [System.Net.DecompressionMethods]::None

@@ -37,6 +37,7 @@ async function wrongMarket(req, res) {
   const path = url.pathname.replace(/^\/plugin-market/, '') || '/'
   const origin = req.headers.origin
   const sfs = req.headers['sec-fetch-site']
+  const host = String(req.headers.host ?? '')
   await drain(req)
 
   // 每个分支都刻意给出违反契约的答案，确保对应断言必然失败
@@ -53,9 +54,36 @@ async function wrongMarket(req, res) {
   if (path === '/remove') return json(res, 200, { ok: true })                     // 应 400 not-allowed
   if (path === '/toggle') return json(res, 200, { ok: true })                     // 应 400 bad-request
   if (path === '/install' && req.method === 'POST') {
-    if (origin === 'http://evil.example') return json(res, 200, { ok: false, error: { code: 'internal' } }) // A14c 必红
-    if (origin || sfs) return json(res, 403, { ok: false, error: { code: 'cross-origin' } })               // A14a/A14b 必红
-    return json(res, 200, { ok: true })                                                                     // A5a 必红
+    // 故意把四类来源形状全部答错（契约 §1 的判定顺序是：桌面壳 origin → cross-site → 比 host →
+    // 无头看回环 → 只有 Sec-Fetch-Site 看 same-origin）。逐条对着断言反着来，
+    // 让 A5a/A5c/A5d/A5e/A5f 与 A14a/A14b 都能被证伪。
+    if (typeof origin === 'string' && origin.includes('evil.example')) {
+      // A5c 必红：外站 Origin 本该 403 cross-origin，却放行。
+      // 用 includes 而不是全等：断言侧用的是 https://evil.example，写全等会漏配到别的分支。
+      return json(res, 200, { ok: false, error: { code: 'internal' } })
+    }
+    if (typeof origin === 'string' && origin !== '') {
+      let originPort = ''
+      try { originPort = new URL(origin).port } catch {}
+      const hostPort = host.split(':')[1] ?? ''
+      if (originPort === hostPort) {
+        // A5e / A14a 必红：同源 Origin 本该放行到业务逻辑，却拒成 cross-origin
+        return json(res, 403, { ok: false, error: { code: 'cross-origin' } })
+      }
+      // A5f 必红：同站不同端口本该拒，却放行
+      return json(res, 200, { ok: true })
+    }
+    if (sfs === 'cross-site') {
+      // A5d 必红：明确的跨站本该 403，却放行
+      return json(res, 200, { ok: true })
+    }
+    if (sfs === 'same-origin') {
+      // A14b 必红：same-origin 本该放行，却拒
+      return json(res, 403, { ok: false, error: { code: 'cross-origin' } })
+    }
+    // A5a 必红：桌面壳形状（无来源头 + 回环 + 已鉴权）本该放行并走到 400 not-in-catalog，
+    // 却直接回 ok:true；A5g 是分层诊断，本条对它不算插件形状的 403，故 A5g 预期为 PASS。
+    return json(res, 200, { ok: true })
   }
   return json(res, 200, { ok: true })                                            // 未知路径应 404，却 200 → A12 必红
 }

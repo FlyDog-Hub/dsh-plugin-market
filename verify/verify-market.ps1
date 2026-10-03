@@ -264,8 +264,52 @@ try {
   # E4 必须在任何 /catalog 之前跑（冷启动）
   Invoke-ColdStartChecks -BaseUrl "$($b1.Origin)/plugin-market" -FixtureCountUrl $fxCountUrl -Collect $collector
 
+  # 建立已鉴权会话（token → 303 → Set-Cookie），后续写接口断言全部复用它。
+  # 不建立会话就直接测写接口，测到的是宿主信任层而不是插件守卫 —— 见 lib\MarketChecks.ps1 头部说明。
+  $sess = New-AuthSession -AuthUrl $b1.BootUrl
+  Add-Evidence -File $script:evidencePath -Title '[A5-session] 已鉴权会话建立' `
+    -Text ("GET $($b1.BootUrl) → status=$($sess.Status) cookie 数=$($sess.CookieCount)`ncookies=" + (($sess.Cookies | ForEach-Object { $_.Substring(0, [Math]::Min(24, $_.Length)) + '…' }) -join '; '))
+  $null = & $collector @{
+    Id = 'A5-session'; Title = '写接口测量前提：已建立带 cookie 的鉴权会话（token → 303 → Set-Cookie）'
+    Command = "GET <启动日志里的鉴权 URL>  →  复用返回的 CookieContainer 发后续写请求"
+    Expected = 'HTTP 200 且拿到 >=1 个会话 cookie'
+    Pass = $sess.Ok
+    Actual = "status=$($sess.Status) cookie数=$($sess.CookieCount)"
+    Evidence = ("不区分两层就会测错层：无 cookie 的写请求会被宿主信任层以空 body 403 拦掉，`n那与插件守卫无关。`ncookies=" + ($sess.Cookies -join '; '))
+  }
+
   Invoke-BootGraphChecks -BootGraph $b1.BootGraph -Origin $b1.Origin -AssertId $assertId -Collect $collector
-  Invoke-MarketRouteChecks -BaseUrl "$($b1.Origin)/plugin-market" -Port $h1.Port -Collect $collector -IncludeExtras
+  Invoke-MarketRouteChecks -BaseUrl "$($b1.Origin)/plugin-market" -Port $h1.Port -Collect $collector -IncludeExtras -Session $sess.CookieContainer
+
+  # origin-guard 判定矩阵单测（Lead 提供的回归集，属 verify/ 写入范围）
+  $guardTest = Join-Path $PSScriptRoot 'origin-guard.test.mjs'
+  $guardOut = ''
+  $guardExit = -1
+  try {
+    if (-not (Test-Path $guardTest)) { throw "缺少 $guardTest" }
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = Get-NodeExe
+    $psi.Arguments = '"' + $guardTest + '"'
+    $psi.UseShellExecute = $false
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    $psi.CreateNoWindow = $true
+    $psi.WorkingDirectory = Get-RepoRoot
+    $gp = [System.Diagnostics.Process]::Start($psi)
+    $go = $gp.StandardOutput.ReadToEndAsync()
+    $ge = $gp.StandardError.ReadToEndAsync()
+    if ($gp.WaitForExit(60000)) { $guardExit = $gp.ExitCode } else { try { $gp.Kill() } catch { } }
+    $guardOut = ($go.Result + "`n--- stderr ---`n" + $ge.Result)
+  } catch { $guardOut = "执行失败: $($_.Exception.Message)" }
+  Add-Evidence -File $script:evidencePath -Title '[A5-guard] origin-guard.test.mjs 原始输出' -Text $guardOut
+  $null = & $collector @{
+    Id = 'A5-guard'; Title = 'isSameOrigin 判定矩阵单测（含桌面壳形状回归）全部通过'
+    Command = "node `"$guardTest`""
+    Expected = 'exit=0；输出含「isSameOrigin 判定矩阵：17/17 通过」与「全部通过」'
+    Pass = (($guardExit -eq 0) -and ($guardOut -match '17/17') -and ($guardOut -match '全部通过'))
+    Actual = "exit=$guardExit 含17/17=$([bool]($guardOut -match '17/17'))"
+    Evidence = $guardOut
+  }
 
   # E6：用 fixture 计数把「缓存命中」变成可观测事实
   $cntProbe = Invoke-HttpProbe -Uri $fxCountUrl
