@@ -155,14 +155,22 @@ Step '4/5 提交并打标签'
 Push-Location $root
 try {
   & git add plugin-market/package.json
-  & git commit -q -m "chore(release): v$version"
-  if ($LASTEXITCODE -ne 0) { throw 'git commit 失败' }
+  $staged = @(& git diff --cached --name-only | Where-Object { $_ })
+  if ($staged.Count -gt 0) {
+    & git commit -q -m "chore(release): v$version"
+    if ($LASTEXITCODE -ne 0) { throw 'git commit 失败' }
+    Ok "已提交版本改动（$($staged -join '、')）"
+  } else {
+    # -Bump none 且 package.json 里已经是目标版本（例如首个版本 1.0.0）：没有可提交的改动，
+    # 直接给当前提交打标签，而不是在这里失败。
+    Ok '版本未变化，跳过提交（直接给当前提交打标签）'
+  }
   $tag = "v$version"
   $existing = & git tag --list $tag
   if ($existing) { throw "标签已存在：$tag（版本号不可重用，请递增）" }
   & git tag -a $tag -m "v$version"
   if ($LASTEXITCODE -ne 0) { throw 'git tag 失败' }
-  Ok "已提交并打标签 $tag"
+  Ok "已打标签 $tag（指向 $((& git rev-parse --short HEAD).Trim())）"
 } finally { Pop-Location }
 
 # ── 5. 推送 + GitHub Release ────────────────────────────────────────
