@@ -1,4 +1,4 @@
-# dsh-market
+# deepseek-harness-market
 
 English | [中文](README.zh.md)
 
@@ -23,7 +23,7 @@ remove plugins without leaving the GUI.
 dsh plugin --profile web add "E:\AI\DeepSeek Harness\Dsh\plugin-market"
 
 # from the GitHub Release asset (substitute the current release's version; this package is not on npm)
-dsh plugin --profile web add https://github.com/Winnie-0721/dsh-plugin-market/releases/download/v1.1.1/dsh-market-1.1.1.tgz
+dsh plugin --profile web add https://github.com/Winnie-0721/dsh-plugin-market/releases/download/v1.1.1/deepseek-harness-market-1.1.1.tgz
 ```
 
 Restart `dsh web` once (or let the desktop app recompose), refresh the page, and the entry appears.

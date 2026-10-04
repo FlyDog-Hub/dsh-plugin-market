@@ -1,12 +1,12 @@
 /**
- * dsh-market — 客户端半（浏览器 bundle）
+ * deepseek-harness-market — 客户端半（浏览器 bundle）
  *
- * 为什么是这个形状：宿主把本文件当脚本直接从 /plugins/??dsh-market/client.js&rev=… 加载，
+ * 为什么是这个形状：宿主把本文件当脚本直接从 /plugins/??deepseek-harness-market/client.js&rev=… 加载，
  * 只给一个 window.__ModuleLoader__ 装载器和平台种子模块 react。没有相对的模块解析、没有第三方组件库，
  * 所以组件、请求封装、i18n 与样式全部放在这个 factory 闭包里，不引任何其它模块。
  */
 window.__ModuleLoader__.load({
-  id: "dsh-market",
+  id: "deepseek-harness-market",
   factory: (require) => {
     var module = { exports: {} };
     var exports = module.exports;
@@ -16,8 +16,8 @@ window.__ModuleLoader__.load({
     var PANEL_KEY = "plugin-market";
     var ENTRY_ID = "plugin-market";
     var API_PREFIX = "/plugin-market";
-    var SELF_NAME = "dsh-market";
-    var STYLE_ID = "dsh-market-style";
+    var SELF_NAME = "deepseek-harness-market";
+    var STYLE_ID = "deepseek-harness-market-style";
     var SEARCH_DEBOUNCE_MS = 300;
     /** 成功/信息类提示的存活时间：与 .dshpm-noticeTimer 的动画时长必须一致。 */
     var NOTICE_DISMISS_MS = 4600;
@@ -99,7 +99,7 @@ window.__ModuleLoader__.load({
         "installed.fiber": "状态：{phase}",
         "installed.rowError": "宿主报告：{message}",
         "installed.notRemovable": "这个包不允许卸载",
-        "installed.self": "市场不能卸载自己；请在终端执行 dsh plugin remove dsh-market",
+        "installed.self": "市场不能卸载自己；请在终端执行 dsh plugin remove deepseek-harness-market",
         "installed.detail": "展开详情",
         "installed.more": "收起详情",
         "badge.official": "官方",
@@ -180,7 +180,7 @@ window.__ModuleLoader__.load({
         "err.cross-origin.next": "在本页内重试；不要用其它站点或脚本调用这个接口。",
         "err.bad-request.title": "请求参数不被接受",
         "err.bad-request.why": "市场发出的参数和宿主预期不一致。",
-        "err.bad-request.next": "重试一次；如果仍然失败，可能是插件与宿主版本不匹配，请更新 dsh-market。",
+        "err.bad-request.next": "重试一次；如果仍然失败，可能是插件与宿主版本不匹配，请更新 deepseek-harness-market。",
         "err.method-not-allowed.title": "请求方法不被允许",
         "err.method-not-allowed.why": "这个地址不接受当前的请求方式，通常说明宿主的市场路由版本较旧。",
         "err.method-not-allowed.next": "重启 DSH，让插件与宿主一起加载，然后重试。",
@@ -324,7 +324,7 @@ window.__ModuleLoader__.load({
         "installed.fiber": "Status: {phase}",
         "installed.rowError": "Host reports: {message}",
         "installed.notRemovable": "This package cannot be removed",
-        "installed.self": "The market cannot remove itself; run dsh plugin remove dsh-market in a terminal",
+        "installed.self": "The market cannot remove itself; run dsh plugin remove deepseek-harness-market in a terminal",
         "installed.detail": "Show details",
         "installed.more": "Hide details",
         "badge.official": "Official",
@@ -405,7 +405,7 @@ window.__ModuleLoader__.load({
         "err.cross-origin.next": "Retry from this page; do not call the endpoint from another site or script.",
         "err.bad-request.title": "The request parameters were rejected",
         "err.bad-request.why": "The parameters the market sent do not match what the host expects.",
-        "err.bad-request.next": "Retry once; if it still fails, the plugin and host versions may not match, so update dsh-market.",
+        "err.bad-request.next": "Retry once; if it still fails, the plugin and host versions may not match, so update deepseek-harness-market.",
         "err.method-not-allowed.title": "The request method is not allowed",
         "err.method-not-allowed.why": "This address does not accept the current method, which usually means the host routes are older.",
         "err.method-not-allowed.next": "Restart DSH so plugin and host load together, then retry.",
@@ -1173,7 +1173,7 @@ window.__ModuleLoader__.load({
       styleObserver = new MutationObserver(function () { ensureStyles(); });
       styleObserver.observe(document.head, { childList: true });
       try {
-        if (ctx && typeof ctx.effect === "function") ctx.effect(function () { return stop; }, "dsh-market: style watchdog");
+        if (ctx && typeof ctx.effect === "function") ctx.effect(function () { return stop; }, "deepseek-harness-market: style watchdog");
         else if (ctx && typeof ctx.on === "function") ctx.on("dispose", stop);
       } catch (watchError) {
         // 拿不到 fiber 生命周期时让观察器留在本页：它只在样式缺失时补一次，不会碰到别人的节点。

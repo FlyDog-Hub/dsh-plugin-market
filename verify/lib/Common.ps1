@@ -314,7 +314,7 @@ function Invoke-HttpProbe {
     # 不设它就会在重定向后丢 cookie，于是首页变成 401（改用 HttpWebRequest 后踩过这个坑）。
     # 传了共享容器就用它，让多个请求落在同一条已鉴权会话上。
     $req.CookieContainer = if ($null -ne $CookieContainer) { $CookieContainer } else { New-Object System.Net.CookieContainer }
-    $req.UserAgent = 'dsh-market-verifier/1.0'
+    $req.UserAgent = 'deepseek-harness-market-verifier/1.0'
     # 不主动请求压缩：让正文是可读的 JSON，避免解压环节引入变量
     $req.AutomaticDecompression = [System.Net.DecompressionMethods]::None
     # POST 时默认的 Expect: 100-continue 会在部分服务端引入额外往返，关掉

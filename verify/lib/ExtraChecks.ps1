@@ -165,14 +165,14 @@ function Invoke-UpdateSemanticsChecks {
     "找到=$($null -ne $target) 已装版本=$instVer latest=$latest updateAvailable=$upd（期望 $wantText）" `
     $r.Body.Substring(0, [Math]::Min(1600, $r.Body.Length))
 
-  # /installed 里 market:true 的那条必须是 dsh-market
+  # /installed 里 market:true 的那条必须是 deepseek-harness-market
   $marketRows = @($bundles | Where-Object { (Get-PropOrNull $_ 'market') -eq $true })
   $marketName = ''
   if ($marketRows.Count -ge 1) { $marketName = [string](Get-PropOrNull $marketRows[0] 'name') }
-  EmitE 'E8-market' '/installed 里 market:true 的那条就是 dsh-market' `
+  EmitE 'E8-market' '/installed 里 market:true 的那条就是 deepseek-harness-market' `
     "GET $BaseUrl/installed  →  bundles[] 中筛选 market === true" `
-    '恰好 1 条 market:true，且其 name === dsh-market' `
-    (($marketRows.Count -eq 1) -and ($marketName -eq 'dsh-market')) `
+    '恰好 1 条 market:true，且其 name === deepseek-harness-market' `
+    (($marketRows.Count -eq 1) -and ($marketName -eq 'deepseek-harness-market')) `
     "market:true 条数=$($marketRows.Count) name=$marketName" `
     (($bundles | ForEach-Object { "name=$(Get-PropOrNull $_ 'name') market=$(Get-PropOrNull $_ 'market') official=$(Get-PropOrNull $_ 'official') installed=$(Get-PropOrNull $_ 'installed')" }) -join "`n")
 }

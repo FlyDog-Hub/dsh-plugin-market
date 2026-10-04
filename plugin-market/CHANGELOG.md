@@ -2,21 +2,27 @@
 
 ## Unreleased
 
-**包名变更**：`dsh-plugin-market` → `dsh-market`。
+**包名变更**：`dsh-market` → `deepseek-harness-market`（前序：`dsh-plugin-market` → `dsh-market`）。
 
-原 npm 包名 `dsh-plugin-market` 已被另一个项目（fireguo / veloce-ailab）占用，无法发布到 npm。
-经用户确认，更名为 `dsh-market`（npm 上可用）。
+两次都是被 npm 规则挡回来的，如实记录：
+
+1. `dsh-plugin-market` 已被另一个项目占用（fireguo / veloce-ailab，latest 1.3.0）；
+2. 改用的 `dsh-market` 被 **同名规则**拦下——与已存在的 `dshmarket`（v1.66.8）只差一个连字符，
+   registry 返回 `403 Package name too similar to existing package dshmarket`，`--access public`
+   也绕不过。registry 建议加 scope，但用户名 `winnie_0721` 含下划线、scope 不允许下划线；
+3. 最终选定 `deepseek-harness-market`，实测可用且近似名（`deepseekharnessmarket`、
+   `deepseek-market` 等）均无冲突。
 
 影响范围：
 - `package.json` name、`cordis.patch.yml` patch name、`lib/index.js` PLUGIN_NAME、
   `lib/client.js` bundle id / SELF_NAME / STYLE_ID、`lib/self-update.js` MARKET_PACKAGE
 - 所有文档、测试、release 脚本中的包名引用
 - GitHub 仓库名不变（仍为 `Winnie-0721/dsh-plugin-market`），self-update 的 MARKET_REPO 不变
-- tarball 文件名从 `dsh-plugin-market-<v>.tgz` 变为 `dsh-market-<v>.tgz`
+- tarball 文件名变为 `deepseek-harness-market-<v>.tgz`
 
-**迁移注意**：已安装旧名的 profile 需要手动卸载旧包再安装新包：
+**迁移注意**：已安装旧名的 profile 需手动换装：
 ```sh
-dsh plugin --profile <profile> remove dsh-plugin-market
+dsh plugin --profile <profile> remove dsh-plugin-market   # 或 dsh-market
 dsh plugin --profile <profile> add <新包路径或 npm 名>
 ```
 

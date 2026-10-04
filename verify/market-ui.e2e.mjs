@@ -59,7 +59,7 @@ const INJECTED_INSTALLED = {
       enabled: true,
     },
     {
-      name: 'dsh-market',
+      name: 'deepseek-harness-market',
       version: '1.0.2',
       updateAvailable: false,
       description: '市场自身。',

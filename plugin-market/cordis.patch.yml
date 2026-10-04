@@ -1,4 +1,4 @@
-# dsh-market — bundle patch layer.
+# deepseek-harness-market — bundle patch layer.
 #
 # 这是本包的 `dsh.bundle.patch` 层。装进 profile（`dsh plugin --profile <name> add <path>`）
 # 后，Loader 会把下面这一行 insert 进该 profile 的根条目列表，市场才会被装载。
@@ -12,6 +12,6 @@
 # 组合里让整行永远停在 pending。
 - insert:
     - id: plugin-market
-      name: dsh-market
+      name: deepseek-harness-market
       inject:
         - webServer

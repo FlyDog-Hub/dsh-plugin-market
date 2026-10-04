@@ -90,8 +90,8 @@ async function wrongMarket(req, res) {
 
 const GOOD_BOOT = `<!doctype html><html><head><script>globalThis["__DSH_BOOT__"] = ${JSON.stringify({
   rev: 'abc',
-  entries: [{ id: 'dsh-market', url: 'plugins/??dsh-market/client.js&rev=abc', rev: 'abc', inject: [] }],
-  batches: [{ phase: 'boot', url: 'plugins/??dsh-market/client.js&rev=abc', rev: 'abc', entries: ['dsh-market'] }],
+  entries: [{ id: 'deepseek-harness-market', url: 'plugins/??deepseek-harness-market/client.js&rev=abc', rev: 'abc', inject: [] }],
+  batches: [{ phase: 'boot', url: 'plugins/??deepseek-harness-market/client.js&rev=abc', rev: 'abc', entries: ['deepseek-harness-market'] }],
 })}</script></head><body>good</body></html>`
 
 const BAD_BOOT = `<!doctype html><html><head><script>globalThis["__DSH_BOOT__"] = ${JSON.stringify({
@@ -102,7 +102,7 @@ const BAD_BOOT = `<!doctype html><html><head><script>globalThis["__DSH_BOOT__"] 
 
 // 故意带上中文，让 A3b 的「UTF-8 解码后含『插件市场』」在 good 图上能真的通过，
 // 而不是靠 selfcheck 里被当成"方向错误"。
-const BUNDLE = `window.__ModuleLoader__.load({\n\tid: "dsh-market",\n\tfactory: (require) => {\n\t\tvar module = { exports: {} }; var exports = module.exports;\n\t\tvar React = require("react");\n\t\texports.inject = ["slots"];\n\t\texports.apply = function () {\n\t\t\tvar title = "插件市场";\n\t\t\tvoid title;\n\t\t};\n\t\treturn module.exports;\n\t}\n});`
+const BUNDLE = `window.__ModuleLoader__.load({\n\tid: "deepseek-harness-market",\n\tfactory: (require) => {\n\t\tvar module = { exports: {} }; var exports = module.exports;\n\t\tvar React = require("react");\n\t\texports.inject = ["slots"];\n\t\texports.apply = function () {\n\t\t\tvar title = "插件市场";\n\t\t\tvoid title;\n\t\t};\n\t\treturn module.exports;\n\t}\n});`
 
 async function boot(req, res) {
   const url = new URL(req.url ?? '/', 'http://x')

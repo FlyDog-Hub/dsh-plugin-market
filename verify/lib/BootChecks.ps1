@@ -16,7 +16,7 @@ function Invoke-BootGraphChecks {
   param(
     [Parameter(Mandatory)]$BootGraph,          # Get-BootGraph 的返回对象
     [Parameter(Mandatory)][string]$Origin,     # 例如 http://127.0.0.1:1234
-    [string]$AssertId = 'dsh-market',
+    [string]$AssertId = 'deepseek-harness-market',
     [Parameter(Mandatory)][scriptblock]$Collect
   )
 

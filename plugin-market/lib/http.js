@@ -71,15 +71,15 @@ export const ERROR_TEXT = {
   },
   'install-failed': {
     message: '安装调用失败。',
-    hint: '看宿主日志里的 dsh-market 记录，确认网络与 pnpm 可用后重试。'
+    hint: '看宿主日志里的 deepseek-harness-market 记录，确认网络与 pnpm 可用后重试。'
   },
   'remove-failed': {
     message: '卸载调用失败。',
-    hint: '看宿主日志里的 dsh-market 记录，然后重试。'
+    hint: '看宿主日志里的 deepseek-harness-market 记录，然后重试。'
   },
   'toggle-failed': {
     message: '开关调用失败。',
-    hint: '看宿主日志里的 dsh-market 记录，然后重试。'
+    hint: '看宿主日志里的 deepseek-harness-market 记录，然后重试。'
   },
   'not-allowed': {
     message: '这个操作被宿主拒绝。',
@@ -87,7 +87,7 @@ export const ERROR_TEXT = {
   },
   internal: {
     message: '插件市场内部出错了。',
-    hint: '看宿主日志里的 dsh-market 记录，然后重试。'
+    hint: '看宿主日志里的 deepseek-harness-market 记录，然后重试。'
   }
 }
 

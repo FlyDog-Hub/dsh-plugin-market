@@ -36,7 +36,7 @@ import { fileFromTarball, timeoutSignal } from './catalog-npm.js'
 
 /** 固定仓库与通道地址：换仓库要改的是这里与 docs/RELEASING.md。 */
 export const MARKET_REPO = 'Winnie-0721/dsh-plugin-market'
-export const MARKET_PACKAGE = 'dsh-market'
+export const MARKET_PACKAGE = 'deepseek-harness-market'
 export const CDN_BASE = `https://cdn.jsdelivr.net/gh/${MARKET_REPO}`
 export const DATA_API = `https://data.jsdelivr.com/v1/packages/gh/${MARKET_REPO}`
 export const GITHUB_RELEASE_API = `https://api.github.com/repos/${MARKET_REPO}/releases/latest`

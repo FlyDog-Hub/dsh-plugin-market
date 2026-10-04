@@ -68,7 +68,7 @@ function materialize() {
   )
   const handoff = globalThis.__handoff
   assert.ok(handoff, 'bundle 必须通过 __ModuleLoader__.load 注册')
-  assert.equal(handoff.id, 'dsh-market', 'bundle id 必须是包名')
+  assert.equal(handoff.id, 'deepseek-harness-market', 'bundle id 必须是包名')
   return handoff.factory((spec) => {
     if (spec === 'react') return react
     throw new Error('unexpected require: ' + spec)
@@ -77,14 +77,14 @@ function materialize() {
 
 // 1) 物化即挂样式
 const exportsObject = materialize()
-const first = dom.head.children.filter((n) => n.id === 'dsh-market-style')
+const first = dom.head.children.filter((n) => n.id === 'deepseek-harness-market-style')
 assert.equal(first.length, 1, 'factory 物化后应当恰好有一个样式节点')
 
 // 2) 再来一次物化：必须是新节点，而不是复用旧的
 const snapshot = first[0]
 dom.document.head.removeChild(snapshot) // 模拟 DSH 回收上一代
 materialize()
-const second = dom.head.children.filter((n) => n.id === 'dsh-market-style')
+const second = dom.head.children.filter((n) => n.id === 'deepseek-harness-market-style')
 assert.equal(second.length, 1, '重新物化后仍应恰好有一个样式节点')
 assert.notEqual(second[0], snapshot, '重新物化必须挂新节点，不能沿用上一代的节点')
 
@@ -111,14 +111,14 @@ assert.ok(observer, 'apply 应当安装 head 观察器')
 dom.document.head.removeChild(second[0])
 assert.equal(dom.head.children.length, 0, '前置条件：样式已被摘掉')
 observer.fire()
-assert.equal(dom.head.children.filter((n) => n.id === 'dsh-market-style').length, 1, '观察器应把样式补回来')
+assert.equal(dom.head.children.filter((n) => n.id === 'deepseek-harness-market-style').length, 1, '观察器应把样式补回来')
 
 // 5) 渲染路径也能补，且 dispose 后观察器断开
 const mainEntry = (slots.entries ?? []).find((e) => e.options && e.options.name === 'main')
 assert.ok(mainEntry, '应注册 main 面板')
 dom.document.head.removeChild(dom.head.children[0])
 mainEntry.component({}) // 渲染一次：应把样式补回来
-assert.equal(dom.head.children.filter((n) => n.id === 'dsh-market-style').length, 1, '渲染路径应当把样式补回来')
+assert.equal(dom.head.children.filter((n) => n.id === 'deepseek-harness-market-style').length, 1, '渲染路径应当把样式补回来')
 disposer()
 assert.equal(observer.disconnected, true, 'dispose 后观察器必须断开')
 

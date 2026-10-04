@@ -1,5 +1,5 @@
 /**
- * dsh-market — HOST 半（Cordis function plugin）。
+ * deepseek-harness-market — HOST 半（Cordis function plugin）。
  *
  * 职责只有一个：把 https://awesome-dsh-plugin.com/plugins.json 这类目录源
  * 变成宿主 HTTP 上的 9 个只读/操作端点，并把宿主可选的 pluginManager 服务桥接出去。
@@ -31,7 +31,7 @@ import {
 } from './catalog.js'
 import { createSelfUpdater } from './self-update.js'
 
-const PLUGIN_NAME = 'dsh-market'
+const PLUGIN_NAME = 'deepseek-harness-market'
 /**
  * 版本从包清单读，**不写死**：写死会在每次发布后与 package.json 漂移，页面与 /status 会跟着
  * 显示上一个版本（本仓库真的发生过一次，发布门禁为此加了一条检查）。读不到时退回 '0.0.0'，

@@ -54,7 +54,7 @@
      其它路径（例如并行进行的 `verify/**` 验收脚本）有改动只警告、不阻塞——它们既不进发布物，
      也不进发布提交，把一场正在跑的验收当成发布阻塞没有意义。
 3. **递增**：按 `-Bump` 写入新的 `version`；
-4. **打包**：`pnpm pack` → `dist/dsh-market-<version>.tgz`，并写 `dist/version.json`
+4. **打包**：`pnpm pack` → `dist/deepseek-harness-market-<version>.tgz`，并写 `dist/version.json`
    （`version` / `versionCode` / 提交数 / 短哈希 / 构建时间）；
 5. **入 CDN 目录**：把 tarball 复制进 `releases/`，并更新 `releases/index.json`
    （`latest` + 每版的 `versionCode` / `sha256` / `bytes` / `tarball`）——这两样必须进版本提交，
@@ -97,7 +97,7 @@ $env:HTTPS_PROXY='http://127.0.0.1:7890'; $env:HTTP_PROXY='http://127.0.0.1:7890
 
 ```powershell
 # 版本号换成当前 Release 的（历次 Release 见仓库 Releases 页）
-dsh plugin --profile web add https://github.com/Winnie-0721/dsh-plugin-market/releases/download/v1.1.1/dsh-market-1.1.1.tgz
+dsh plugin --profile web add https://github.com/Winnie-0721/dsh-plugin-market/releases/download/v1.1.1/deepseek-harness-market-1.1.1.tgz
 ```
 
 装好第一次之后就不必再记这条命令：市场头部的「检查市场更新」会走 §4.4 的 CDN 通道自己完成升级。
@@ -108,14 +108,17 @@ dsh plugin --profile web add https://github.com/Winnie-0721/dsh-plugin-market/re
 
 ### 4.2 发布到 npm
 
-本包已更名为 `dsh-market`（原 `dsh-plugin-market` 在 npm 上属于另一个项目 fireguo/veloce-ailab，
-无法使用）。改名涉及的代码位置已全部更新：`package.json`、`cordis.patch.yml`、`lib/client.js`、
-`lib/index.js`、`lib/self-update.js`、README 与文档。
+本包已更名为 `deepseek-harness-market`。改名经过两步：原 `dsh-plugin-market` 在 npm 上属于另一个项目
+（fireguo/veloce-ailab）；随后选的 `dsh-market` 又被 npm 的同名规则拦下——它与已存在的
+`dshmarket`（v1.66.8）只差一个连字符，registry 对非 scoped 包返回
+`403 Package name too similar to existing package dshmarket`，`--access public` 也绕不过。
+（registry 建议加 scope，但用户名 `winnie_0721` 含下划线，而 scope 不允许下划线，需另建组织。）
+最终选定 `deepseek-harness-market`，实测可用且无近似名冲突。
 
 发布前确认：
 1. `npm whoami` 能返回你的用户名（否则先 `npm login` 或设置 `NPM_TOKEN`）；
-2. `npm view dsh-market version` 返回 404（名字仍可用）；
-3. `pnpm publish --access public`（公开包需要显式指定 access）。
+2. `npm view deepseek-harness-market version` 返回 404（名字仍可用）；
+3. `npm publish --access public`（公开包需要显式指定 access）。
 
 ### 4.3 真要发 npm 时的检查单
 

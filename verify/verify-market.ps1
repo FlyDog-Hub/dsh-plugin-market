@@ -44,7 +44,7 @@ $hosts = New-Object System.Collections.ArrayList
 $servers = New-Object System.Collections.ArrayList
 $portsUsed = New-Object System.Collections.ArrayList
 $failReason = $null
-$assertId = 'dsh-market'
+$assertId = 'deepseek-harness-market'
 $usageNpm = '@feiyang666/dsh-usage-plugin'
 
 # 证据路径写成 script 作用域变量，收集器里显式用 $script: 前缀。
@@ -168,10 +168,10 @@ try {
   Write-Host "期望 client bundle id = $assertId"
 
   $null = & $collector @{
-    Id = 'A0'; Title = 'package.json 可解析，且包名是 dsh-market'
+    Id = 'A0'; Title = 'package.json 可解析，且包名是 deepseek-harness-market'
     Command = "Get-Content `"$pkgFile`" -Raw | ConvertFrom-Json"
-    Expected = 'JSON 可解析；name=dsh-market'
-    Pass = ($null -ne $pkg -and $pkgName -eq 'dsh-market')
+    Expected = 'JSON 可解析；name=deepseek-harness-market'
+    Pass = ($null -ne $pkg -and $pkgName -eq 'deepseek-harness-market')
     Actual = "name=$pkgName version=$(Get-PropOrNull $pkg 'version')"
     Evidence = (Read-FileShared $pkgFile)
   }

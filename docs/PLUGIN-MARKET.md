@@ -1,10 +1,10 @@
-# dsh-market 设计与规范对照
+# deepseek-harness-market 设计与规范对照
 
 本文件说明这次「重新制作一份 DeepSeek Harness 插件市场」做了什么、为什么这样做、以及每一处
 如何对应官方插件规范。原始参考实现是 [dsh-market](https://github.com/dsh-market/dsh-market)，
 官方规范来源是 [deepseek-ai/deepseek-harness](https://github.com/deepseek-ai/deepseek-harness)。
 
-- 包目录：`plugin-market/`（包名 `dsh-market`）
+- 包目录：`plugin-market/`（包名 `deepseek-harness-market`）
 - 接口契约：`docs/API-CONTRACT.md`
 - 团队共享事实：`docs/TEAM-BRIEF.md`
 - 安装脚本：`scripts/install-into-profile.ps1`
@@ -34,7 +34,7 @@
 ## 2. 交付形态：一个包，两个半
 
 DeepSeek Harness 的插件就是 Cordis 插件，Web GUI 的插件还必须额外提供一个浏览器半。
-本包的 `dsh-market` 一次提供两半：
+本包的 `deepseek-harness-market` 一次提供两半：
 
 | | 文件 | 运行位置 | 职责 |
 |---|---|---|---|
@@ -52,8 +52,8 @@ DeepSeek Harness 的插件就是 Cordis 插件，Web GUI 的插件还必须额�
 | host 半是 function plugin | 只 named-export `name` / `inject` / `apply`，**没有** default export | `packages/AGENTS.md`：混用会让 Loader 丢掉 function plugin 的命名空间 |
 | 可选服务用 `ctx.get()` | `pluginManager` 用 `ctx.get('pluginManager')`，缺失时市场降级为只读浏览 | 同上：`ctx.<name>` 只留给声明的注入 |
 | 注册即副作用，返回 disposer | 路由注册走 `ctx.webServer.register(...)`，其返回值就是卸载函数；插件卸载后路由消失 | `ctx.webServer.register` 契约 |
-| 浏览器半声明 `dsh.client` | `dsh.client.platform = "web"` + `exports["./client"] = "./lib/client.js"`，宿主据此合成 `window.__DSH_BOOT__` 并在 `/plugins/??dsh-market/client.js&rev=…` 提供产物 | `docs/subsystems/client-modules.md` |
-| 浏览器半的产物格式 | `window.__ModuleLoader__.load({ id: "dsh-market", factory(require) {…} })`，factory 返回 `{ inject, apply }` | 与已装 usage-plugin 完全同构，客户端模块表按包名注册 factory |
+| 浏览器半声明 `dsh.client` | `dsh.client.platform = "web"` + `exports["./client"] = "./lib/client.js"`，宿主据此合成 `window.__DSH_BOOT__` 并在 `/plugins/??deepseek-harness-market/client.js&rev=…` 提供产物 | `docs/subsystems/client-modules.md` |
+| 浏览器半的产物格式 | `window.__ModuleLoader__.load({ id: "deepseek-harness-market", factory(require) {…} })`，factory 返回 `{ inject, apply }` | 与已装 usage-plugin 完全同构，客户端模块表按包名注册 factory |
 | 只使用平台种子模块 | client 半只 `require("react")`，用 `window.fetch` 取数据；不引第三方库、不写 `eval` | `packages/client/AGENTS.md`：baseline 之外的裸模块必须显式声明，本包不需要 |
 | 用 `slots.inject` 注册到别人声明的席位 | `slots.inject('main', …)` 与 `slots.inject('sidebar.footer.action', …)`：等声明出现才注册，声明撤销就回滚 | `packages/client/AGENTS.md` 第 4 条 |
 | 面板选择走框架动作，不自己写导航 | 入口点击调用 `ctx.get('layout').selectPanel('plugin-market')`；`main` 的 keyed 席位注册 `plugin-market` | `packages/client/ui-plugin-manager/src/client/index.ts` 是同一模式的官方先例 |
@@ -102,7 +102,7 @@ DeepSeek Harness 的插件就是 Cordis 插件，Web GUI 的插件还必须额�
 - **请求体有上限**（64 KiB）且必须是 `application/json`。
 - **不自己起包管理器**：安装/卸载交给 `pluginManager` 服务，构建脚本仍受宿主 pnpm≥10 的
   默认拦截约束，需要用户显式批准时 UI 会把 `pendingBuilds` 摆出来再重提。
-- **市场不能卸载自己**：`remove dsh-market` 返回 400 并给出终端命令，避免用户点一下
+- **市场不能卸载自己**：`remove deepseek-harness-market` 返回 400 并给出终端命令，避免用户点一下
   就失去唯一的 UI 入口。
 - **不落盘、不带凭据**：host 半只做 GET 目录与调用宿主服务，不写任何文件；目录请求不带认证头。
 
@@ -159,8 +159,8 @@ DeepSeek Harness 的插件就是 Cordis 插件，Web GUI 的插件还必须额�
 profile，`dsh plugin --profile marketcheck add <本包>` 安装，起 4 个宿主实例，按契约逐条断言。
 最终一轮 `verify-20261003-214407`：**47 条断言 PASS=47 / FAIL=0**，覆盖：
 
-- 安装后 `dsh.profile.bundles` 含 `dsh-market`、`node_modules` 里有它、宿主启动日志无 FAILED fiber；
-- 首页 `window.__DSH_BOOT__` 含 `id === 'dsh-market'` 的 entry，`/plugins/??dsh-market/client.js&rev=…` 返回 JS，**按 UTF-8 解码后含「插件市场」且无替换字符**；
+- 安装后 `dsh.profile.bundles` 含 `deepseek-harness-market`、`node_modules` 里有它、宿主启动日志无 FAILED fiber；
+- 首页 `window.__DSH_BOOT__` 含 `id === 'deepseek-harness-market'` 的 entry，`/plugins/??deepseek-harness-market/client.js&rev=…` 返回 JS，**按 UTF-8 解码后含「插件市场」且无替换字符**；
 - `/status`（冷启动 `catalog:null` 且零网络调用）、`/catalog`（真实抓取 4412 条、550ms、缓存命中与 refresh）、`/installed`（12 个 bundle，含 `market:true` 的市场自身）；
 - 越权与错误路径：跨站 POST 403、GET 打 POST 405 + `Allow`、目录外 spec 400 `not-in-catalog`、卸载自身 400 `not-allowed`、未知路径 404、>64KiB 400、非 JSON Content-Type 400；
 - 对抗性：客户端 bundle 无 `eval(` / `new Function(`；缺 `pluginManager` 时 `apply` 不抛且降级为只读；`updateAvailable` 在目录版本更低/更高两个方向都对。
@@ -175,7 +175,7 @@ REPORT 的「工具缺陷与修正」一节——验收报告承认自己的测�
 在用户的 `desktop` profile 上执行 `scripts/install-into-profile.ps1 -Profile desktop`：
 
 - 装前备份 `package.json` / `cordis.patch.yml` / `pnpm-lock.yaml` 到 `_verify/backup-desktop-<时间戳>/`；
-- 安装结果：`dsh-market link:E:/AI/DeepSeek Harness/Dsh/plugin-market`，pnpm 301ms，`dsh.profile.bundles` 追加 `dsh-market`，用户补丁层未改动；
+- 安装结果：`deepseek-harness-market link:E:/AI/DeepSeek Harness/Dsh/plugin-market`，pnpm 301ms，`dsh.profile.bundles` 追加 `deepseek-harness-market`，用户补丁层未改动；
 - **HMR 自动生效，无需重启、无需刷新**：约 8 秒后侧边栏底部（账号行上方）出现「插件市场」入口，点击即在主栏打开市场页；
 - 实测截图（真实 GUI，整窗捕获）：市场页显示 4412 条目录、23 个分类、分页 1/184，卡片带安装/详情按钮。
 
@@ -220,8 +220,8 @@ REPORT 的「工具缺陷与修正」一节——验收报告承认自己的测�
 1. `GET /plugin-market/self-update` → `updateAvailable:true`、`installable:true`、带 `url`/`sha256`；
 2. `POST`（走在已鉴权会话上）→ **真的下载 1.1.x 的 tarball**（`@<tag>` / `@main` / Release 附件三条路依次试）、
    按清单校验 sha256、
-   解开 tarball 自证 `dsh-market@<version>`、写盘、再交给宿主 `pluginManager.installBundle`；
-3. 核对 scratch profile 的 `dependencies['dsh-market']` 已经变成指向下载物的 `file:` ——
+   解开 tarball 自证 `deepseek-harness-market@<version>`、写盘、再交给宿主 `pluginManager.installBundle`；
+3. 核对 scratch profile 的 `dependencies['deepseek-harness-market']` 已经变成指向下载物的 `file:` ——
    证明 pnpm 真的装了，而不是接口回了个 200；
 4. `finally` 里按字节还原 `package.json`（并核对 sha256）与 scratch profile，删掉测试下载物。
 
