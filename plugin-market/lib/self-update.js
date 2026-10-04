@@ -319,25 +319,37 @@ export function createSelfUpdater(options = {}) {
       return { ok: false, code: 'self-update-unavailable', message: '当前运行环境没有 fetch。', attempts: [] }
     }
 
+    // 逐个源「完整地」试：源给出候选版本 **并且** 拿得到那一版的清单，才算这个源成功。
+    // 早退出条件是「已经有一个明确高于当前版本的答案」——那种情况下不用再问别的源；
+    // 而「没有更新」必须问完全部源，因为某个源可能只是慢了一拍（实测：刚发完版，
+    // jsDelivr 的标签列表要过一阵才索引到新标签，而 @main 那份清单已经是新的）。
     const attempts = []
-    let found = null
+    const candidates = []
     for (const source of buildSources()) {
       const res = await source.read(fetchImpl)
-      if (res.ok === true) {
-        attempts.push({ id: source.id, label: source.label, ok: true, reason: `v${res.version}` })
-        found = { source, version: res.version, tag: res.tag, entry: res.entry ?? null }
-        break
+      if (res.ok !== true) {
+        attempts.push({ id: source.id, label: source.label, ok: false, reason: res.reason })
+        continue
       }
-      attempts.push({ id: source.id, label: source.label, ok: false, reason: res.reason })
+      const resolved = res.entry !== undefined && res.entry !== null
+        ? { ok: true, entry: res.entry }
+        : await entryForTag(fetchImpl, res.tag, res.version, null)
+      if (resolved.ok !== true) {
+        attempts.push({ id: `${source.id}:index`, label: `${source.label} → ${res.tag} 的 releases/index.json`, ok: false, reason: resolved.reason })
+        continue
+      }
+      attempts.push({ id: source.id, label: source.label, ok: true, reason: `v${resolved.entry.version}` })
+      candidates.push({ source, entry: resolved.entry })
+      if (current !== null && isNewer(resolved.entry.version, current)) break
     }
 
-    if (found === null) {
+    if (candidates.length === 0) {
       const detail = attempts.map((attempt) => `${attempt.label}：${attempt.reason}`).join('；')
       logger.warn?.(`[${MARKET_PACKAGE}] 自更新检查失败：${detail === '' ? '没有可用源' : detail}`)
       const value = {
         ok: false,
         code: 'self-update-unavailable',
-        message: '三个更新源都没能回答。',
+        message: '三个更新源都没能给出可用的版本清单。',
         hint: '这台机器可能访问不了 jsDelivr 与 GitHub；可在终端用 dsh plugin add 手动升级。',
         attempts
       }
@@ -345,26 +357,12 @@ export function createSelfUpdater(options = {}) {
       return value
     }
 
-    const resolved = found.entry !== null
-      ? { ok: true, entry: found.entry }
-      : await entryForTag(fetchImpl, found.tag, found.version, null)
-    if (resolved.ok !== true) {
-      attempts.push({ id: `${found.source.id}:index`, label: `${found.tag} 的 releases/index.json`, ok: false, reason: resolved.reason })
-      const detail = attempts.map((attempt) => `${attempt.label}：${attempt.reason}`).join('；')
-      const value = {
-        ok: false,
-        code: 'self-update-unavailable',
-        message: `找到了最新版本 v${found.version}，但拿不到它的发布清单。`,
-        hint: '稍后重试；也可在终端用 dsh plugin add 按 Release 附件升级。',
-        attempts,
-        latest: found.version
-      }
-      logger.warn?.(`[${MARKET_PACKAGE}] 自更新清单不可用：${detail}`)
-      cache = { at: now, value }
-      return value
+    // 取「能拿到清单的最高版本」：不同源的缓存新鲜度不一致，取最高的那个才不会漏掉更新。
+    let best = candidates[0]
+    for (const candidate of candidates) {
+      if (compareVersions(candidate.entry.version, best.entry.version) === 1) best = candidate
     }
-
-    const entry = resolved.entry
+    const entry = best.entry
     const updateAvailable = current === null ? true : isNewer(entry.version, current)
     const url = entry.tarball === null ? null : `${CDN_BASE}@${encodeURIComponent(entry.tag)}/${entry.tarball}`
     const value = {
@@ -377,8 +375,10 @@ export function createSelfUpdater(options = {}) {
       releasedAt: entry.releasedAt,
       updateAvailable,
       installable: updateAvailable && url !== null && entry.sha256 !== null,
-      channel: found.source.id,
+      channel: best.source.id,
       url,
+      // 相对路径一并交出去：下载时要在标签地址之外再试 main 分支的同一路径。
+      tarball: entry.tarball,
       sha256: entry.sha256,
       bytes: entry.bytes,
       attempts,
@@ -388,27 +388,55 @@ export function createSelfUpdater(options = {}) {
     return value
   }
 
-  /** 下载 + 三道校验 + 落盘；任何一道不过都返回失败，绝不把未校验的字节交给 pnpm。 */
-  async function download(entryUrl, entry) {
-    const res = await getBytes(fetchImpl, entryUrl, TARBALL_TIMEOUT_MS)
-    if (res.ok !== true) return { ok: false, code: 'self-update-download', message: `下载失败：${res.reason}` }
-    const bytes = res.bytes
-    if (entry.bytes !== null && bytes.length !== entry.bytes) {
-      return { ok: false, code: 'self-update-integrity', message: `字节数与清单不符（清单 ${entry.bytes}，实际 ${bytes.length}）。` }
+  /**
+   * 同一份 tarball 的候选地址。标签地址是规范的那一个（内容不可变、缓存永久），
+   * 但标签可能还没被 CDN 索引（实测：刚推完标签 `@v1.1.0/…` 会 404 一阵），
+   * 那时用 main 分支上的同一路径顶上——**内容由 sha256 负责**，从哪条路取不影响安全性。
+   */
+  function tarballUrls(entry) {
+    if (typeof entry.tarball !== 'string' || entry.tarball === '') return []
+    const relative = entry.tarball.split('/').map((segment) => encodeURIComponent(segment)).join('/')
+    const tag = typeof entry.latestTag === 'string' && entry.latestTag !== '' ? entry.latestTag : `v${entry.latest}`
+    const urls = [`${CDN_BASE}@${encodeURIComponent(tag)}/${relative}`]
+    urls.push(`${CDN_BASE}@main/${relative}`)
+    return [...new Set(urls)]
+  }
+
+  /**
+   * 下载 + 三道校验 + 落盘；任何一道不过都返回失败，绝不把未校验的字节交给 pnpm。
+   * 参数就是 check() 的结果对象（它同时带 url / tarball / sha256 / bytes）。
+   */
+  async function download(status) {
+    // 传输层失败（404/超时/断流）可以换下一条路；一旦拿到字节，哈希不符就是硬失败，不再试别的。
+    const urls = [...new Set([status.url, ...tarballUrls(status)])]
+    let res = null
+    let lastReason = ''
+    for (const url of urls) {
+      const attempt = await getBytes(fetchImpl, url, TARBALL_TIMEOUT_MS)
+      if (attempt.ok === true) {
+        res = attempt
+        break
+      }
+      lastReason = `${attempt.reason}（${url.includes('@main') ? 'main 分支' : '标签地址'}）`
     }
-    const hash = verifySha256Hex(bytes, entry.sha256)
+    if (res === null) return { ok: false, code: 'self-update-download', message: `下载失败：${lastReason}` }
+    const bytes = res.bytes
+    if (status.bytes !== null && bytes.length !== status.bytes) {
+      return { ok: false, code: 'self-update-integrity', message: `字节数与清单不符（清单 ${status.bytes}，实际 ${bytes.length}）。` }
+    }
+    const hash = verifySha256Hex(bytes, status.sha256)
     if (hash.ok !== true) return { ok: false, code: 'self-update-integrity', message: `完整性校验失败：${hash.reason}。` }
     const manifest = readArtifactManifest(bytes)
     if (manifest.ok !== true) return { ok: false, code: 'self-update-integrity', message: `产物不可读：${manifest.reason}。` }
-    if (manifest.name !== MARKET_PACKAGE || manifest.version !== entry.version) {
+    if (manifest.name !== MARKET_PACKAGE || manifest.version !== status.latest) {
       return {
         ok: false,
         code: 'self-update-integrity',
-        message: `产物自证不符：清单声明 ${manifest.name ?? '?'}@${manifest.version ?? '?'}，期望 ${MARKET_PACKAGE}@${entry.version}。`
+        message: `产物自证不符：清单声明 ${manifest.name ?? '?'}@${manifest.version ?? '?'}，期望 ${MARKET_PACKAGE}@${status.latest}。`
       }
     }
     await mkdir(downloadDir, { recursive: true })
-    const target = join(downloadDir, `${MARKET_PACKAGE}-${entry.version}.tgz`)
+    const target = join(downloadDir, `${MARKET_PACKAGE}-${status.latest}.tgz`)
     const partial = `${target}.part`
     // 先写 .part 再改名：pnpm 永远不会读到写了一半的 tarball。
     await writeFile(partial, bytes)
@@ -434,8 +462,7 @@ export function createSelfUpdater(options = {}) {
     if (manager === null || typeof manager.installBundle !== 'function') {
       return { ok: false, code: 'manager-unavailable' }
     }
-    const entry = { version: status.latest, tag: status.latestTag, sha256: status.sha256, bytes: status.bytes }
-    const downloaded = await download(status.url, entry)
+    const downloaded = await download(status)
     if (downloaded.ok !== true) return downloaded
 
     let result

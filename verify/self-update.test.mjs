@@ -173,7 +173,11 @@ function fakeFetch(routes) {
   const impl = async (url) => {
     calls.push(String(url))
     for (const [pattern, responder] of routes) {
-      if (String(url).includes(pattern)) return typeof responder === 'function' ? responder(url) : responder
+      if (String(url).includes(pattern)) {
+        const out = typeof responder === 'function' ? responder(url) : responder
+        // 返回 null/undefined 表示「这条不匹配」，继续看后面的规则。
+        if (out !== null && out !== undefined) return out
+      }
     }
     return { ok: false, status: 404, text: async () => 'not found' }
   }
@@ -244,6 +248,47 @@ await checkAsync('10 分钟内复用缓存，不再打网络', async () => {
   assert.equal(fetchImpl.calls.length, afterFirst, '第二次应命中缓存')
   await updater.check({ force: true })
   assert.ok(fetchImpl.calls.length > afterFirst, 'force 必须绕过缓存')
+})
+
+await checkAsync('标签列表慢了一拍（刚发版）时改用 @main 的清单：不能因为第一个源半残就放弃', async () => {
+  // 实测场景：刚推完 v1.1.0，jsDelivr 的标签列表还只有 1.0.2，而 @v1.0.2/releases/index.json
+  // 是 404（那个版本还没有 releases/ 目录）；此时 @main 上的清单已经是 1.1.0。
+  const fetchImpl = fakeFetch([
+    ['data.jsdelivr.com', jsonResponse({ versions: [{ version: '1.0.0' }, { version: '1.0.2' }] })],
+    ['@v1.0.2/releases/index.json', { ok: false, status: 404, text: async () => 'not found' }],
+    ['releases/index.json', jsonResponse(REPO_INDEX('1.1.0'))],
+  ])
+  const updater = createSelfUpdater({ fetchImpl, current: '1.0.2', logger: { warn() {} } })
+  const result = await updater.check({ force: true })
+  assert.equal(result.ok, true, '第一个源半残不该让整次检查失败')
+  assert.equal(result.latest, '1.1.0')
+  assert.equal(result.updateAvailable, true)
+  assert.equal(result.channel, 'jsdelivr-index')
+  assert.ok(result.attempts.some((attempt) => attempt.ok === false && /404/.test(attempt.reason)), '半残的源要留下失败记录')
+})
+
+await checkAsync('多个源都给出条目时取最高的那一个（缓存新鲜度不一致，取高才不会漏更新）', async () => {
+  const fetchImpl = fakeFetch([
+    ['data.jsdelivr.com', jsonResponse({ versions: [{ version: '1.1.0' }] })],
+    ['@v1.1.0/releases/index.json', jsonResponse(REPO_INDEX('1.1.0'))],
+    ['@main/releases/index.json', jsonResponse(REPO_INDEX('1.2.0'))],
+  ])
+  const updater = createSelfUpdater({ fetchImpl, current: '1.1.0', logger: { warn() {} } })
+  const result = await updater.check({ force: true })
+  assert.equal(result.latest, '1.2.0', '没有「明确更高」时要把其余源也问完，取最高的')
+  assert.equal(result.updateAvailable, true)
+})
+
+await checkAsync('已经有一个明确更高的答案就早退出（不为一次点击问遍所有源）', async () => {
+  const fetchImpl = fakeFetch([
+    ['data.jsdelivr.com', jsonResponse({ versions: [{ version: '1.1.0' }] })],
+    ['@v1.1.0/releases/index.json', jsonResponse(REPO_INDEX('1.1.0'))],
+    ['api.github.com', jsonResponse({ tag_name: 'v9.9.9' })],
+  ])
+  const updater = createSelfUpdater({ fetchImpl, current: '1.0.0', logger: { warn() {} } })
+  const result = await updater.check({ force: true })
+  assert.equal(result.latest, '1.1.0')
+  assert.equal(fetchImpl.calls.some((url) => url.includes('api.github.com')), false, '已知有更新的情况下不该再去问 GitHub')
 })
 
 // ── 5. apply()：拒绝路径绝不安装 ─────────────────────────────────────
@@ -369,11 +414,70 @@ await checkAsync('正常路径：下载 → 落盘 → 用本地绝对路径安�
   }
 })
 
+await checkAsync('标签地址 404 时改用 @main 的同一路径下载（内容由 sha256 负责）', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'dshpm-selfupdate-fallback-'))
+  try {
+    const fetchImpl = fakeFetch([
+      ['data.jsdelivr.com', jsonResponse({ versions: [{ version: '1.1.0' }] })],
+      ['releases/index.json', jsonResponse({
+        latest: { version: '1.1.0', tag: 'v1.1.0', tarball: 'releases/dsh-plugin-market-1.1.0.tgz', sha256: TARBALL_SHA, bytes: TARBALL.length },
+        versions: [],
+      })],
+      // 标签还没被 CDN 索引（实测会 404 一阵），main 分支上有同一份文件
+      ['@v1.1.0/releases/dsh-plugin-market-1.1.0.tgz', { ok: false, status: 404, text: async () => 'not found' }],
+      ['@main/releases/dsh-plugin-market-1.1.0.tgz', { ok: true, status: 200, arrayBuffer: async () => TARBALL }],
+    ])
+    const manager = fakeManager()
+    const updater = createSelfUpdater({ fetchImpl, current: '1.0.0', manager, downloadDir: dir, cacheMs: 0, logger: { warn() {} } })
+    const result = await updater.apply()
+    assert.equal(result.ok, true, '标签 404 不该让更新失败')
+    assert.equal(result.to, '1.1.0')
+    assert.equal(manager.calls.length, 1)
+    assert.ok(fetchImpl.calls.some((url) => url.includes('@main/releases/dsh-plugin-market-1.1.0.tgz')), '应当真的去试了 main 分支')
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+await checkAsync('拿到了字节但哈希不符 = 硬失败，绝不换另一个来源重试', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'dshpm-selfupdate-hardfail-'))
+  try {
+    const tampered = Buffer.from(TARBALL)
+    tampered[tampered.length - 1] = tampered[tampered.length - 1] ^ 0xff
+    const fetchImpl = fakeFetch([
+      ['data.jsdelivr.com', jsonResponse({ versions: [{ version: '1.1.0' }] })],
+      ['releases/index.json', jsonResponse({
+        latest: { version: '1.1.0', tag: 'v1.1.0', tarball: 'releases/dsh-plugin-market-1.1.0.tgz', sha256: TARBALL_SHA, bytes: TARBALL.length },
+        versions: [],
+      })],
+      ['@v1.1.0/releases/dsh-plugin-market-1.1.0.tgz', { ok: true, status: 200, arrayBuffer: async () => tampered }],
+      ['@main/releases/dsh-plugin-market-1.1.0.tgz', { ok: true, status: 200, arrayBuffer: async () => TARBALL }],
+    ])
+    const manager = fakeManager()
+    const updater = createSelfUpdater({ fetchImpl, current: '1.0.0', manager, downloadDir: dir, cacheMs: 0, logger: { warn() {} } })
+    const result = await updater.apply()
+    assert.equal(result.ok, false)
+    assert.equal(result.code, 'self-update-integrity')
+    assert.equal(manager.calls.length, 0, '字节都拿到了还哈希不符，是篡改信号，不能换个来源就放过')
+    assert.equal(fetchImpl.calls.some((url) => url.includes('@main/releases/dsh-plugin-market-1.1.0.tgz')), false)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
 await checkAsync('没有 fetch 的运行环境：如实报不可用', async () => {
-  const updater = createSelfUpdater({ fetchImpl: undefined, current: '1.0.0', logger: { warn() {} } })
-  const result = await updater.check({ force: true })
-  assert.equal(result.ok, false)
-  assert.equal(result.code, 'self-update-unavailable')
+  // 必须真的把全局 fetch 摘掉再测：createSelfUpdater 在没注入 fetchImpl 时会退回 globalThis.fetch，
+  // 而 Node 自带 fetch —— 不摘的话这条断言会真的去打网络（旧版就是这样，网络一通它就"通过"了）。
+  const saved = globalThis.fetch
+  try {
+    delete globalThis.fetch
+    const updater = createSelfUpdater({ current: '1.0.0', logger: { warn() {} } })
+    const result = await updater.check({ force: true })
+    assert.equal(result.ok, false)
+    assert.equal(result.code, 'self-update-unavailable')
+  } finally {
+    globalThis.fetch = saved
+  }
 })
 
 // ── 汇总 ────────────────────────────────────────────────────────────
