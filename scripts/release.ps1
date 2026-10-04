@@ -95,15 +95,23 @@ if ($clientText -notmatch ('id\s*:\s*"' + [regex]::Escape($manifest.name) + '"')
 if ($clientText -match 'eval\s*\(' -or $clientText -match 'new\s+Function\s*\(') { throw 'client bundle 含 eval/new Function' }
 Ok 'client bundle：有 loader 注册、id 与包名一致、无 eval/new Function'
 
-# 旧版本号不得留在发布物里：写死的版本号会在发布后与 package.json 漂移（1.0.1 发布时
-# lib/index.js 里还写着 1.0.0，页面与 /status 都跟着显示旧版本）。
+# 旧版本号不得**作为取值**留在发布物里：写死的版本号会在发布后与 package.json 漂移（1.0.1 发布时
+# lib/index.js 里还写着旧版本，页面与 /status 都跟着显示旧版本）。
+#
+# 只看非注释行：这个门禁要抓的是"代码里把一个版本号当值用"，而不是"文档里不许提到版本号"。
+# 上一版连注释一起查，于是把一句如实记录实测现象的注释判成了违规——那种门禁的下场是被
+# 当成噪声、然后被放宽，所以修成现在这样（错过第一列是 // 或块注释续行 * 的行）。
 if ($version -ne $current) {
-  $staleHits = @(Get-ChildItem (Join-Path $pkgDir 'lib') -Filter '*.js' | Select-String -SimpleMatch $current)
+  $staleHits = @(
+    Get-ChildItem (Join-Path $pkgDir 'lib') -Filter '*.js' |
+      Select-String -SimpleMatch $current |
+      Where-Object { $_.Line -notmatch '^\s*(//|\*|/\*)' }
+  )
   if ($staleHits.Count -gt 0) {
     $where = ($staleHits | ForEach-Object { "$($_.Filename):$($_.LineNumber)" }) -join '、'
-    throw "lib/ 里仍写着旧版本号 $current（$where）。版本必须从包清单读，不要写死在代码里。"
+    throw "lib/ 的非注释行里仍写着旧版本号 $current（$where）。版本必须从包清单读，不要写死在代码里。"
   }
-  Ok "lib/ 里没有写死的旧版本号 $current"
+  Ok "lib/ 的非注释行里没有写死的旧版本号 $current"
 }
 
 # 行为回归测试：verify/ 下所有 *.test.mjs 必须全绿（与门禁里的其它检查同等对待）。
