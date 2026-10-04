@@ -16,11 +16,13 @@
 # 本地目录（开发/自用）
 dsh plugin --profile web add "E:\AI\DeepSeek Harness\Dsh\plugin-market"
 
-# 发布到 npm 之后
-dsh plugin --profile web add dsh-plugin-market
+# 从 GitHub Release 附件装（把版本号换成当前 Release 的；本包没有发到 npm）
+dsh plugin --profile web add https://github.com/Winnie-0721/dsh-plugin-market/releases/download/v1.1.1/dsh-plugin-market-1.1.1.tgz
 ```
 
 装完重启一次 `dsh web`（或让桌面端重新组合），刷新页面即可看到入口。
+装好之后就不必再记这条命令了：市场头部的「检查市场更新」会自己做这件事
+（走 jsDelivr CDN，下载后三道校验，装完提示你重启 DSH 一次）。
 
 Windows 上一键安装并自动备份 profile：
 

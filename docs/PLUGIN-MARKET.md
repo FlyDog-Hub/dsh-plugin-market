@@ -205,12 +205,28 @@ REPORT 的「工具缺陷与修正」一节——验收报告承认自己的测�
 顺带记一个踩点：headless Chromium **默认就是 `prefers-reduced-motion: reduce`**，
 不显式钉 `no-preference` 的话，「动效生效」那组断言测的是一条永远关着动画的路径。
 
-### 8.4 尚未覆盖
+### 8.4 自更新端到端（真实 CDN + 真实安装）
+
+`verify/self-update-live.ps1` 不模拟任何一环：它把 `plugin-market/package.json` 的版本临时
+降到 `1.0.9`（低于最新标签），于是新起的 scratch 宿主会认为自己旧了，然后：
+
+1. `GET /plugin-market/self-update` → `updateAvailable:true`、`installable:true`、带 `url`/`sha256`；
+2. `POST`（走在已鉴权会话上）→ **真的从 jsDelivr 下载 1.1.x 的 tarball**、按清单校验 sha256、
+   解开 tarball 自证 `dsh-plugin-market@<version>`、写盘、再交给宿主 `pluginManager.installBundle`；
+3. 核对 scratch profile 的 `dependencies['dsh-plugin-market']` 已经变成指向下载物的 `file:` ——
+   证明 pnpm 真的装了，而不是接口回了个 200；
+4. `finally` 里按字节还原 `package.json`（并核对 sha256）与 scratch profile，删掉测试下载物。
+
+结论：**6/6 通过**。这条路径也是这轮唯一能暴露「第一个源半残就整次失败」的地方——
+离线测试当时还没有那个用例，是发布后真跑一次才撞出来的（修在 v1.1.1，
+从此 `verify/self-update.test.mjs` 里有了对应的离线用例）。
+
+### 8.5 尚未覆盖
 
 - 从**终端或另一个窗口**做的插件变更不会推送到已打开的市场页，需要手点「刷新目录」或重开面板。
 - 官方 URL 兜底最坏 30s（只在两个 npm 源都失败时才会走到）。
 - 动效只做了「计算样式层面」的断言（动画名、填充模式、延迟、reduced-motion 开关）：
   具体某一帧的观感、以及滚动中的合成性能没有自动化测量，仍靠人看截图。
-- 自更新的「真要装一个**更新**」这条端到端路径，验证方式是让 scratch 宿主报告一个**旧于**
-  最新标签的当前版本，再在 scratch profile 里真的下载 + 校验 + `pnpm add`（见 §8.1 的记录）；
-  它没有进发布门禁，因为它需要真实网络与一次真实安装。
+- **CDN 索引延迟只能容纳、不能消除**：刚发完版的那几分钟里，新标签可能既不在版本列表里
+  也没被标签路径索引，此时若 `@main` 的缓存也还旧，检查结果会晚一拍（显示「已是最新」而不是
+  报错）。这不是缺陷而是源的固有性质，因此不承诺「发布后立刻可见」。

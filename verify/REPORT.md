@@ -369,6 +369,12 @@ pwsh -File scripts/verify-market.ps1
 
 # 离线版（跳过真实源那一段）
 pwsh -File scripts/verify-market.ps1 -SkipLive
+
+# —— v1.1.x 新增的验证（都不在验收主脚本里，理由见 §12.9）——
+node verify/self-update.test.mjs         # 自更新通道离线回归（32 条）
+node verify/client-copy.test.mjs         # 文案键集 + 动效写法不变量（13 条）
+pwsh -File verify/ui-check.ps1           # 真实浏览器（headless Edge + CDP），出截图
+pwsh -File verify/self-update-live.ps1   # 自更新端到端：真实下载 + 校验 + pnpm 安装
 ```
 
 ### 9.3 运行历史（含被修正的失败轮，供审计）
@@ -386,7 +392,9 @@ pwsh -File scripts/verify-market.ps1 -SkipLive
 | `selfcheck-20261003-212959` / `213804` | PASS | 断言自检（含「FAIL 要有道理」补强） |
 | `selfcheck-20261003-221659` | FAIL（自检自身抓出） | wrong-stub 用 `http://evil.example` 全等匹配、断言发的是 `https://…`，`A5c` 落到别的分支 → 已改 `includes` |
 | `selfcheck-20261003-221734` | PASS | 新期望矩阵：18 条契约断言全红 + `A5g` 诊断绿 |
-| **`verify-20261003-221755`** | **53 PASS / 0 FAIL** | **修复后复验最终轮（本报告结论所依据的一轮）** |
+| **`verify-20261003-221755`** | **53 PASS / 0 FAIL** | **修复后复验最终轮（v1.0.0 结论所依据的一轮）** |
+| `verify-20261004-180827` | 51 PASS / 2 FAIL | v1.1.0 后的回归轮。两条失败**都是我自己的断言过期**，不是产品缺陷：`A4a` 写死了 `plugin.version=1.0.0`；`E5-env` 把一次环境测量当成产品性质（要求直连官方源必须 >15s，而这轮 8.0s 就通了）。两条的修正与定性依据见 §12.4 |
+| `verify-20261004-181336` | **53 PASS / 0 FAIL** | **v1.1.1 后的回归轮**（修完上述两条断言 + 自更新通道回退逻辑）。§12 的全部结论文本所依据的一轮 |
 
 ---
 
@@ -481,3 +489,126 @@ E7-fetch status=200 耗时=527ms                                       ← 真�
 - `desktop/cordis.patch.yml`：`5B9826E192DDD9052754DC36AFA972A8E90F40A0A77C2400E662FD87899CE642`（前后一致）
 
 均为外部会话所为，非本工具。
+
+
+---
+
+## 12. v1.1.0 / v1.1.1 这一轮：两个新按钮、自更新通道、整套动效
+
+### 12.1 本轮改了什么（验收对象）
+
+| 面 | 内容 |
+|---|---|
+| client 半 | 头部两个按钮（「更新插件」带计数角标 /「检查市场更新」四态）；可就地展开的可更新列表（逐条确认，无批量）；侧边栏入口角标；顶部不确定性进度条；提示条自动收起 + 倒计时线；整套动效（错峰入场、hover 抬升、按下回弹、页签底线滑动、面板展开、reduced-motion 关闭） |
+| host 半 | `GET`/`POST /plugin-market/self-update`（同一 handler）；`lib/self-update.js`（三源回退、三道校验、下载落盘、交给 `pluginManager` 安装） |
+| 发布流程 | `release.ps1` 多一步：tarball 与 `releases/index.json` 进版本提交 → 进标签 → jsDelivr 可取 |
+| 仓库可见性 | **private → public**。这是自更新通道的前提，也决定别人能否安装这个插件 |
+
+### 12.2 结论汇总
+
+| 验证 | 结果 | 证据 |
+|---|---|---|
+| 契约验收（冻结的 53 条） | **53 PASS / 0 FAIL** | `verify-20261004-181336`（v1.1.1 后） |
+| 真实浏览器渲染与动效（24 条） | **24/24** | `verify/ui-check.ps1`，截图 `verify/logs/ui/` |
+| 自更新通道离线回归（32 条） | **32/32** | `verify/self-update.test.mjs` |
+| 文案与动效不变量（13 条） | **13/13** | `verify/client-copy.test.mjs` |
+| 自更新端到端（真实 CDN + 真实安装，6 条） | **6/6** | `verify/self-update-live.ps1` |
+| 样式生命周期回归（5 条，v1.0.1 起） | **5/5** | `verify/style-heal.test.mjs` |
+
+### 12.3 真实浏览器验收（补上了上一轮列为"未覆盖"的那一项）
+
+§8.3（旧版）写着「真实浏览器里的 DOM 级渲染断言没有自动化」。本轮补上了，做法是：
+**新起一个 scratch 宿主进程**（因此它加载的是仓库里当前的宿主半代码，不需要重启用户正在用的 DSH），
+再用系统自带的 headless Edge 通过 CDP 驱动真引擎（Node 22+ 自带 `WebSocket`，零依赖）。
+
+要点与三个踩坑：
+
+- **假 DOM 桩证明不了的事**：真渲染、真计算样式、`prefers-reduced-motion` 下内容还在不在。
+  这三件正是本轮要验的，所以必须真浏览器。
+- **`/installed` 用 CDP 拦截注入**：构造确定性的「两个插件可更新、一个没有」，
+  于是角标数字与列表内容不依赖当时目录里恰好有什么。
+- **headless Chromium 默认就是 `prefers-reduced-motion: reduce`**：不显式钉 `no-preference`，
+  「动效生效」那组断言测的是一条永远关着动画的路径（第一轮 24 条里 4 条就是这么红的）。
+  现在同一个页面里先钉 `no-preference` 证明动效在跑、再切 `reduce` 证明它被关掉——一个真正的 A/B。
+- **过渡期间不能采样**：`visibility` 是离散属性、中途才翻转，刚点完就读高度/`innerText`
+  会读到过渡中途的值。改成等「高度 > 120」再断言（另两条红就是这么来的）。
+
+### 12.4 本轮被"自己的验收"抓出来的产品缺陷
+
+按发现顺序，**每一条都是先红后绿**：
+
+| # | 缺陷 | 怎么被抓到 | 修法 |
+|---|---|---|---|
+| 1 | **同一路径的 GET 与 POST 互相覆盖**：路由表以 path 为键，`/self-update` 登记两次后只剩 POST → `GET` 恒 405 | scratch 宿主实测 `GET → 405 这个地址只接受 POST` | GET/POST 合并成单个 handler（`docs/API-CONTRACT.md` §5 第 10 条） |
+| 2 | **可更新列表要求目录先加载好**：列表数据本来就在 `/installed` 里，却先判断发现页的目录数据，导致打开列表显示「目录还没就绪」 | 真实浏览器：注入的 `/installed` 已有两条更新，面板却是空状态 | 顺序改为「有可更新条目就直接列」，只有列表为空时才区分「都最新」与「目录没读到」 |
+| 3 | **升入动画用 `both` 会钉死 `transform`**：卡片 hover 抬升、按钮按下缩放会静默失效 | 写动效时自查发现（不是测出来的）→ 立刻写进 `client-copy.test.mjs` 当不变量 | 全部升入动画改 `backwards`；并加断言禁止 `forwards`/`both` |
+| 4 | **第一个源半残就整次检查失败**：刚发完版 jsDelivr 版本列表还是旧的、旧标签没有 `releases/` → 清单 404 → 回「找到了 vX 但拿不到清单」 | **发布 v1.1.0 之后立刻实测**（离线用例当时没覆盖这个组合） | 每个源要「版本 + 清单」都成功才成功，失败继续问下一个；无更新时取最高版本。修在 v1.1.1，并补了离线用例 |
+| 5 | **下载只认标签地址**：标签未被 CDN 索引时 `@v1.1.0/…` 404 → 即使清单在手也装不上 | 同上，同一次实测 | 传输层失败时改试 `@main` 同一路径（内容由 `sha256` 负责）；但**拿到字节后哈希不符是硬失败，不换来源重试** |
+
+第 4、5 条值得单独记一笔：**它们是"只有真的发一次版"才会暴露的问题**——
+离线测试当时全绿，契约验收也全绿，因为两者都没有「刚推完标签、CDN 尚未索引」这个状态。
+`verify/self-update-live.ps1` 就是为此写的，它现在能重现这个状态。
+
+### 12.5 顺带修正的两条过期断言（我自己的工具缺陷）
+
+- **`A4a` 把期望版本写死成 `1.0.0`**：发版后「产品正确上报当前版本」被判失败。
+  改为与 `plugin-market/package.json` 的 `version` 比较——契约要求的是"等于包清单里的版本"，
+  不是一个具体数字。
+- **`E5-env` 把一次环境测量当成产品性质**：它要求「Node 直连官方源必须 >15s 或失败」，
+  用来论证 npm 镜像优先。这轮直连 8.0s 就通了（5.3MB），于是一个**仍然正确**的实现被判失败。
+  改为断言**可持久的关系**：直连仍明显慢于镜像（>2s 门槛，镜像实测 289–550ms）。
+  哪天直连也进了 2s，该重新评估的是源顺序，而不是这个阈值。
+
+同一个动作也修掉一个测试卫生问题：`self-update.test.mjs` 里「没有 fetch 的运行环境」那条
+在 Node 下其实退回了 `globalThis.fetch`，**于是它会真的去打网络**，网络一通就误判为通过。
+现在真的把全局 `fetch` 摘掉再测。
+
+### 12.6 自更新端到端真的走了一遍
+
+`verify/self-update-live.ps1` 把 `plugin-market/package.json` 临时降到 `1.0.9`（低于最新标签），
+让 scratch 宿主真的认为自己旧了，然后：
+
+```
+L1  GET /self-update → updateAvailable=true、installable=true、带 url/sha256   PASS
+L2  已鉴权会话（token → 303 → Set-Cookie）                                      PASS
+L3  POST /self-update → application=restart-required、from=1.0.9、to=1.1.x      PASS
+L4  落盘 tarball 的 sha256 == releases/index.json 里记的值                      PASS
+L4b 产物自证：tarball 内的 package.json 声明 dsh-plugin-market@<version>        PASS
+L5  scratch profile 的依赖变成指向下载物的 file:（pnpm 真的装了）                PASS
+    finally: package.json 按字节还原（sha256 核对一致）、profile 还原、下载物清理
+```
+
+**6/6 通过**。这条路径同时证明了「三道校验」是真在跑（L4/L4b）与「装完不算生效」（L3 的
+`requiresRestart: true`，客户端据此回到「检查市场更新」而不是显示"已更新"）。
+
+### 12.7 界面证据
+
+`verify/logs/ui/` 下的四张图（`market-updates-open.png`、`market-header-zoom.png`、
+`market-header-closed.png`、`market-reduced-motion.png`）来自真实浏览器；
+`plugin-market/assets/market-updates.png` 与 `market-header-actions.png` 是其中两张的压缩版，
+随包发布。第一张里可以看到：头部三个按钮（含角标 2）、提示条与其倒计时线、就地展开的
+可更新列表（两条，各带自己的「更新到 x.y.z」，没有批量按钮）、以及侧边栏入口上的角标。
+
+### 12.8 未覆盖 / 残留风险（不掩饰）
+
+- **动效只验到计算样式层**：动画名、填充模式、延迟、reduced-motion 开关都已自动化；
+  具体某一帧的观感与滚动合成性能没有测量，仍靠人看截图。
+- **自更新的信任锚不是独立签名**：三道校验挡得住损坏、截断、单点替换，**挡不住
+  「CDN 与 `releases/index.json` 一起被换」**。要到那个强度需要独立签名密钥，本轮不做——
+  写进契约 §2.9 的「已知限制」而不是含糊带过。
+- **CDN 索引延迟只能容纳、不能消除**：刚发完版的几分钟里新标签可能既不在版本列表里、
+  也没被标签路径索引；此时若 `@main` 的缓存也还旧，检查会晚一拍（显示「已是最新」而非报错）。
+  这是源的固有性质，因此不承诺「发布后立刻可见」。
+- **仓库 public 是通道前提**：转 private 之后按钮会变成「更新通道没有回应」。
+  这是本轮把仓库从 private 转 public 的直接原因（转之前 Release 附件只有我本人能下）。
+- **`ui-check.ps1` 与 `self-update-live.ps1` 不在发布门禁里**：一个要起浏览器，
+  一个要真实网络并临时改 `package.json`。两者都写进了 `docs/RELEASING.md` §4.5 的
+  「每次发版前跑一遍」，但**门禁不会替你跑**——这一点如实记下。
+
+### 12.9 与冻结契约的关系
+
+`docs/API-CONTRACT.md` 的 53 条断言**一条都没有被放宽**（53 PASS / 0 FAIL）。
+本轮在契约里新增的是**新端点**（§2.8/§2.9）与**新断言**（§5 第 9–12 条），
+以及 §4 里关于动效的三条不可违反的约束。旧端点、旧字段、旧错误码一个没动。
+唯一的"旧断言被改写"是 §5 第 5 条相关的 `A4a` 期望值（写死版本号 → 与包清单比较），
+属于把断言修得更正确，不是放宽。

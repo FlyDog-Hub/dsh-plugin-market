@@ -208,8 +208,13 @@ Query 参数（全部可选，未知参数忽略）：
 
 - `updateAvailable` 只在 `latest` **严格高于** `current`（同一套 `MAJOR.MINOR.PATCH` 比大小，不认预发布号）时为 `true`；相等或更低一律 `false`。
 - `installable` = 有更新 **且** 拿到了可校验的产物（`url` + `sha256` 都在）；假时客户端不出「更新到 x.y.z」，只提示。
-- `channel` 是实际命中的源 id：`jsdelivr-tags` → `jsdelivr-index` → `github-release`（顺序即优先级）。
+- `channel` 是最终采纳的那个源 id：`jsdelivr-tags` → `jsdelivr-index` → `github-release`。
+- **每个源必须「给出候选版本」且「拿得到那一版的 `releases/index.json`」都成功才算成功**，
+  任何一个源半残都要继续问下一个（实测：刚推完标签时 Data API 的版本列表还是旧的，
+  而旧版本没有 `releases/` 目录 → 清单 404）。有一个明确高于 `current` 的答案就早退出；
+  没有更新时问完全部源、取**最高**那一个（不同源的 CDN 缓存新鲜度不一致，取最高才不会漏更新）。
 - 三个源都失败 ⇒ `502 self-update-unavailable`，`diagnostic` 里按顺序列出每个源各自的失败原因。
+- `tarball` 也一并返回：下载时会用它构造 main 分支的备用地址（见 §2.9）。
 
 ### 2.9 `POST /plugin-market/self-update`
 
@@ -229,6 +234,9 @@ Query 参数（全部可选，未知参数忽略）：
 
 **信任链（三道，缺一不可）**：① `index.json` 里的 tarball 必须是 `releases/*.tgz` 且拼在固定 CDN 前缀后（写别的 URL 一律不采信）；② 字节的 `sha256` 必须与清单一致；③ 解开 tarball 读 `package/package.json`，包名与版本必须与预期一致。
 第 ② 道不防「CDN 与清单一起被换」——那需要独立签名密钥，**目前没有**，这是已知限制而不是已解决的问题。
+
+**取字节的两条路**：先试 `@<tag>/releases/<file>.tgz`，传输层失败（404/超时/断流）再试 `@main/releases/<file>.tgz`——标签可能还没被 CDN 索引（实测会有几分钟到数小时的空窗）。因为第 ② 道校验的是**内容**，从哪条路取不影响安全性。
+反过来，一旦**拿到了完整字节**而哈希不符，那是篡改信号：直接以 `self-update-integrity` 失败，**不换来源重试**。
 
 ## 3. 目录抓取策略（host）
 
@@ -317,11 +325,15 @@ window.__ModuleLoader__.load({
 6. `POST /plugin-market/install` 用目录外 spec 返回 400 `not-in-catalog`。
 7. 卸载自身返回 400 `not-allowed`。
 8. 目录缓存：连续两次 `GET /catalog` 第二次 `fetchedAt` 不变；`POST /refresh` 后变化。
-9. **自更新通道**（`verify/self-update.test.mjs` 离线覆盖 + scratch 宿主实测）：
+9. **自更新通道**（`verify/self-update.test.mjs` 32 条离线 + `verify/self-update-live.ps1` 真实端到端）：
    - `GET /plugin-market/self-update` 返回 `ok:true`，`latest` 等于仓库最新标签，`current === latest` 时 `updateAvailable:false`；
+   - **一个源半残不能拖垮整次检查**：标签列表只给到旧版本、那个旧标签的清单 404 时，必须改用下一个源并成功；
    - 三个源全不通时 `502 self-update-unavailable` 且 `diagnostic` 列出三条失败原因；
    - 校验不过（sha256 / 长度 / 产物自证）时 `apply` **不调用** `pluginManager.installBundle`；
-   - `index.json` 里写非 `releases/*.tgz` 的地址时拒绝且不下载。
+   - `index.json` 里写非 `releases/*.tgz` 的地址时拒绝且不下载；
+   - **标签地址 404 时改用 main 分支的同一路径**；但拿到字节后哈希不符是硬失败，不换来源重试；
+   - 端到端（`verify/self-update-live.ps1`）：临时把当前版本降到低于最新标签 → 真的下载 → 校验 →
+     `pnpm add` 装进 scratch profile（依赖变为 `file:` 指向下载物）→ 结束时按字节还原本地 `package.json`。
 10. **同一路径的 GET 与 POST 必须只有一个路由登记项**：路由表以 path 为键，登记两次会互相覆盖，`GET /self-update` 会变成 405。改这里要重跑 §5 第 9 条的 GET 断言。
 11. **真实浏览器渲染**（`verify/ui-check.ps1` → `verify/market-ui.e2e.mjs`）：侧边栏入口可点开面板；头部三个按钮文案与顺序正确；有 2 个可更新插件时角标显示 `2`；点「更新插件」展开列表且每行都有自己的「更新到 x.y.z」、没有批量按钮；卡片/列表行的 `animation-name` 含 `dshpm-rise` 且 `animation-fill-mode` 是 `backwards`；切到 `prefers-reduced-motion: reduce` 后 `animation-name` 变 `none` 而列表行仍然可见（行数不变）。
 12. **文案与动效不变量**（`verify/client-copy.test.mjs`）：zh/en 键集完全一致；代码里用到的每个 `t("字面量键")` 都在两种语言里存在；没有僵尸文案键；被引用的 `@keyframes` 都有定义；没有任何升入动画用 `forwards`/`both`。

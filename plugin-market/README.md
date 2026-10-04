@@ -22,11 +22,14 @@ remove plugins without leaving the GUI.
 # local directory (development / personal use)
 dsh plugin --profile web add "E:\AI\DeepSeek Harness\Dsh\plugin-market"
 
-# once published to npm
-dsh plugin --profile web add dsh-plugin-market
+# from the GitHub Release asset (substitute the current release's version; this package is not on npm)
+dsh plugin --profile web add https://github.com/Winnie-0721/dsh-plugin-market/releases/download/v1.1.1/dsh-plugin-market-1.1.1.tgz
 ```
 
 Restart `dsh web` once (or let the desktop app recompose), refresh the page, and the entry appears.
+After that first install you do not need the command again: the market's own **Check for updates**
+button does exactly this (over the jsDelivr CDN, with three verification checks, and it asks you to
+restart DSH once when it is done).
 
 On Windows you can install with a profile backup in one step:
 

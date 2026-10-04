@@ -220,7 +220,10 @@ $indexOut = [ordered]@{
   latest    = $latest
   versions  = $versions
 }
-[System.IO.File]::WriteAllText($indexPath, ($indexOut | ConvertTo-Json -Depth 6), [System.Text.UTF8Encoding]::new($false))
+# .gitattributes 把 *.json 归一成 LF；这里直接写成 LF，免得每次发布都刷一条
+# "CRLF will be replaced by LF" 的警告（那个警告看着像失败，实际只是行尾说明）。
+$indexJson = ($indexOut | ConvertTo-Json -Depth 6) -replace "`r`n", "`n"
+[System.IO.File]::WriteAllText($indexPath, $indexJson, [System.Text.UTF8Encoding]::new($false))
 Ok "releases/$tgzName（$([math]::Round($bytes / 1KB)) KB，sha256 $($hash.Substring(0, 12))…）"
 Ok "releases/index.json：latest=$($latest.version)（共 $($versions.Count) 个版本）"
 

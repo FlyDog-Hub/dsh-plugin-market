@@ -81,8 +81,10 @@ $env:HTTPS_PROXY='http://127.0.0.1:7890'; $env:HTTP_PROXY='http://127.0.0.1:7890
 
 ```powershell
 # 版本号换成当前 Release 的（历次 Release 见仓库 Releases 页）
-dsh plugin --profile web add https://github.com/Winnie-0721/dsh-plugin-market/releases/download/v1.0.2/dsh-plugin-market-1.0.2.tgz
+dsh plugin --profile web add https://github.com/Winnie-0721/dsh-plugin-market/releases/download/v1.1.1/dsh-plugin-market-1.1.1.tgz
 ```
+
+装好第一次之后就不必再记这条命令：市场头部的「检查市场更新」会走 §4.4 的 CDN 通道自己完成升级。
 
 `dsh plugin add` 的 spec 解析接受 `.tgz` URL（`parseInstallSpec` 的 tarball 形状），
 上面这条命令在全新 profile 上实测：**10.6 秒装完、bundle 已激活、`node_modules` 里有包**。
@@ -154,19 +156,33 @@ jsDelivr 只能取**仓库里的文件**（取不到 Release 附件），所以 
 - **仓库必须保持 public**。转成 private 之后 jsDelivr 会 404（它读不到私有仓库），按钮会直接变成「更新通道没有回应」。同时 private 也意味着别人根本装不上这个插件（Release 附件要鉴权）。
 - **同一个版本只能发一次**。标签内容不可变，jsDelivr 按标签永久缓存；改了代码就必须递增版本号（`release.ps1` 的可重入检查会拦住复用版本号）。
 
+**CDN 索引有延迟，别在发布后立刻用「第一个源」判断成败**（实测数据，2026-10-04）：
+
+| 推完 v1.1.0 之后 | `@v1.1.0/releases/index.json` | `data.jsdelivr.com` 的版本列表 |
+|---|---|---|
+| 立刻 | 404 | 只有 1.0.0 / 1.0.1 / 1.0.2 |
+| 几分钟后 | **200** | 仍然只有旧的三个 |
+
+所以检查逻辑必须容得下「某个源慢一拍」：每个源都要**版本与该版本的清单都拿到**才算成功，
+失败就继续问下一个；没有更新时问完全部源再取最高版本。下载同理，标签地址 404 时改用 `@main`
+的同一路径——**内容由 `sha256` 负责**，从哪条路取都不影响安全性。
+这条是发布后立刻实测撞出来的（当时第一个源半残就让整次检查失败了），修在 v1.1.1。
+
 发完自更新之后用户必须**重启 DSH**（见 §5），因为宿主半在进程里被 Loader 缓存。
 
 ### 4.5 每次发版前跑一遍的三件事
 
 ```powershell
-node verify/self-update.test.mjs        # 自更新通道的离线回归（含"拒绝路径不安装"）
-node verify/client-copy.test.mjs        # 文案键集与动效写法的不变量
-pwsh -File verify/ui-check.ps1          # 真实浏览器：起 scratch 宿主 + headless Edge，出截图
+node verify/self-update.test.mjs         # 自更新通道的离线回归（含"拒绝路径不安装"）
+node verify/client-copy.test.mjs         # 文案键集与动效写法的不变量
+pwsh -File verify/ui-check.ps1           # 真实浏览器：起 scratch 宿主 + headless Edge，出截图
+pwsh -File verify/self-update-live.ps1   # 自更新端到端：真的下载 + 校验 + pnpm 安装（需真实网络）
 ```
 
-`verify/ui-check.ps1` 不进门禁：它要起一个宿主进程和一个浏览器，慢且依赖本机有 Edge；
-但它给出的是**假 DOM 桩给不了**的证据（真的渲染、真的计算样式、reduced-motion 下真的还在）。
-改动客户端半之后必须手动跑一次，截图落在 `verify/logs/ui/`。
+`verify/ui-check.ps1` 与 `verify/self-update-live.ps1` 不进门禁：一个要起宿主进程和浏览器，
+一个要真实网络并临时改 `package.json`（它自己会按字节还原）；两者都慢且依赖本机环境。
+但它们给出的是**离线测试给不了**的证据（真渲染、真计算样式、真的把包装上）。
+改动客户端半或自更新通道之后必须手动各跑一次；截图落在 `verify/logs/ui/`。
 
 ## 5. 发布之后：改动什么时候生效
 
