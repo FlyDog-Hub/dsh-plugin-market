@@ -152,6 +152,23 @@ try {
   const badge = await evaluate(client, `(() => { const b = document.querySelector('.dshpm-count'); return b ? b.textContent.trim() : null; })()`)
   expect('「更新插件」按钮上有可更新数量角标，且数字来自注入的列表', badge === '2', `实际：${badge}`)
 
+  // 用户报的「显示不全」：通知条被压成一条、文字只剩半行。
+  // 根因是 flex 项的自动最小尺寸规则（非 visible 的 overflow ⇒ 自动最小尺寸 0），
+  // 所以这条断言直接量 clientHeight 与 scrollHeight，而不是只看它「在不在」。
+  console.log('\n[2b] 提示条不能被压扁（用户报的「显示不全」）')
+  await waitFor(client, `document.querySelector('.dshpm-notice') !== null`, 8000, '提示条出现')
+  const noticeMetrics = await evaluate(
+    client,
+    `(() => {
+       const n = document.querySelector('.dshpm-notice');
+       const cs = getComputedStyle(n);
+       return { offset: n.offsetHeight, client: n.clientHeight, scroll: n.scrollHeight, flexShrink: cs.flexShrink, overflow: cs.overflow, text: n.innerText.replace(/\\s+/g, ' ').trim() };
+     })()`,
+  )
+  expect('提示条没有被压扁（clientHeight ≥ scrollHeight）', Number(noticeMetrics?.client) >= Number(noticeMetrics?.scroll), JSON.stringify(noticeMetrics))
+  expect('提示条高度足够容纳整行文字（≥ 30px）', Number(noticeMetrics?.offset) >= 30, JSON.stringify(noticeMetrics))
+  expect('提示条文案完整可读（不是被裁掉半行）', /发现 2 个插件有新版本/.test(String(noticeMetrics?.text)), String(noticeMetrics?.text))
+
   console.log('\n[3] 动效（真实计算样式）')
   // 必须先等卡片真的出现：目录是一次网络往返，刚打开面板时还是骨架屏。
   await waitFor(client, `document.querySelector('.dshpm-card') !== null`, 30000, '发现页的第一张卡片')
@@ -260,6 +277,32 @@ try {
   console.log('\n[7] 控制台错误')
   const pluginErrors = consoleErrors.filter((line) => !/favicon|net::ERR_|DevTools/i.test(line))
   expect('插件在页面里没有产生控制台错误', pluginErrors.length === 0, pluginErrors.slice(0, 5).join(' | '))
+
+  // 同一类缺陷的通用回归：视口矮到内容必然溢出时，容器必须自己滚动，
+  // 而不是把某个带 overflow 的子项（自动最小尺寸 0）压扁。
+  console.log('\n[8] 窄高视口下不得压扁任何区块')
+  await client.send('Emulation.setDeviceMetricsOverride', { width: 1200, height: 520, deviceScaleFactor: 1, mobile: false })
+  await evaluate(
+    client,
+    `(() => { const p = document.querySelector('.dshpm-updatesPanel'); if (p && p.getAttribute('data-open') === 'false') document.querySelector('.dshpm-btn--updates').click(); return true; })()`,
+  )
+  await waitFor(client, `document.querySelector('.dshpm-updatesPanel[data-open="true"]') !== null`, 8000, '窄高视口下面板展开')
+  await waitFor(client, `document.querySelector('.dshpm-updatesPanel').getBoundingClientRect().height > 120`, 8000, '面板高度稳定')
+  const squeezed = await evaluate(
+    client,
+    `(() => {
+       const root = document.querySelector('.dshpm-root');
+       const bad = [];
+       for (const child of root.children) {
+         if (child.clientHeight < child.scrollHeight - 1) bad.push((child.className || '?') + ':' + child.clientHeight + '<' + child.scrollHeight);
+       }
+       return { bad, rootScrolls: root.scrollHeight > root.clientHeight, rootClient: root.clientHeight, rootScroll: root.scrollHeight, children: root.children.length };
+     })()`,
+  )
+  expect('窄高视口下没有任何直接子项被压扁', Array.isArray(squeezed?.bad) && squeezed.bad.length === 0, JSON.stringify(squeezed))
+  expect('面板根自己滚动（不是靠压扁子项来容纳内容）', squeezed?.rootScrolls === true, JSON.stringify(squeezed))
+  await screenshot(client, join(shotDir, 'market-short-viewport.png'))
+  console.log(`  · 截图：${join(shotDir, 'market-short-viewport.png')}`)
 } catch (error) {
   expect('测试执行未抛异常', false, error.message)
 } finally {

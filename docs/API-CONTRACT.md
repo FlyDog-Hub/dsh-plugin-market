@@ -316,6 +316,9 @@ window.__ModuleLoader__.load({
 - 动效（v1.1.0）：全部由 CSS 驱动，三条不可违反的约束——① 基础样式里不写 `opacity: 0`（动效被关掉时元素必须直接可见）；② 只动 `transform`/`opacity`/`max-height`，不动宽高与位置；③ 升入类动画一律 `animation-fill-mode: backwards`（用 `forwards`/`both` 会把 `transform` 钉在末帧，卡片 hover 抬升与按钮按下缩放会全部失效）。
   `@media (prefers-reduced-motion: reduce)` 下关掉 `.dshpm-root` 内所有动画与过渡，内容按最终位置完全可见。
   错峰入场用内联 `animationDelay`（卡片 22ms×序号、列表行 26ms×序号，序号封顶 12）。
+- **面板根的布局约定（v1.1.3）**：`.dshpm-root` 是「定高 + 可滚动」的 flex 列，所以**直接子项一律 `flex: 0 0 auto`**。
+  依据是 CSS 的自动最小尺寸规则：flex 项只要带**非 `visible` 的 `overflow`**（例如通知条为了底部倒计时线加的 `overflow: hidden`），它的自动最小尺寸就是 **0**，于是整段溢出量都压到它身上、把自己的文字裁掉——v1.1.3 修的正是这个（通知条自然高度 36px、实际只渲染 16px，提示只剩半行；最小复现与实测数据见 `verify/REPORT.md` §12.12）。
+  约束：**溢出由容器自己滚动消化，任何区块都不靠收缩来适配**。
 
 ## 5. 验收断言（verifier 用）
 

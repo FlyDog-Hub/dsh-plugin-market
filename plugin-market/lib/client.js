@@ -918,6 +918,12 @@ window.__ModuleLoader__.load({
 .dshpm-entryIcon { flex:none; display:inline-flex; align-items:center; justify-content:center; }
 .dshpm-entryLabel { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .dshpm-root { display:flex; flex-direction:column; gap:12px; box-sizing:border-box; width:100%; height:100%; min-height:0; overflow:auto; padding:16px clamp(16px,3vw,32px) 32px; color:var(--dsw-alias-label-primary,#1a1a1a); background:var(--dsw-alias-bg-base,transparent); }
+/* 面板根是「定高 + 可滚动」的 flex 列，直接子项默认 flex-shrink:1；而 flex 项一旦带非 visible 的
+   overflow（例如通知条为了底部倒计时线加的 overflow:hidden），它的**自动最小尺寸就变成 0**——
+   于是全部溢出量都压到它身上，文字被裁成一条。真实截图就是这样：通知条自然高度 36px，
+   实际只渲染 16px，提示只剩半行。正确行为是「根本身滚动」，所以直接子项一律不参与收缩。
+   最小复现与实测数据见 verify/REPORT.md §12.12。 */
+.dshpm-root > * { flex:0 0 auto; }
 .dshpm-header { display:flex; align-items:flex-start; gap:12px; flex-wrap:wrap; }
 .dshpm-headerMain { flex:1 1 240px; min-width:0; }
 .dshpm-title { margin:0; font-size:1.1em; font-weight:600; }
