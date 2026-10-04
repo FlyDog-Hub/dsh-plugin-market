@@ -46,6 +46,31 @@ function Invoke-Native([string]$exe, [string[]]$argv) {
   return $code
 }
 
+# ── 版本算术（单独成函数，才能被下面的自检真正测到）───────────────────
+# 规则：**高位递增时低位必须归零**。这条会静默错——哪天有人把它改成"只加不清零"，
+# 1.0.2 + minor 会得到 1.1.2，而版本号一旦发布就再也改不回来，所以每次发布都要跑自检。
+function Get-BumpedParts([int[]]$Parts, [string]$Kind) {
+  $major = $Parts[0]; $minor = $Parts[1]; $patch = $Parts[2]
+  switch ($Kind) {
+    'major' { $major += 1; $minor = 0; $patch = 0 }
+    'minor' { $minor += 1; $patch = 0 }
+    'patch' { $patch += 1 }
+    'none' { }
+    default { throw "未知的递增类型：$Kind" }
+  }
+  return , @($major, $minor, $patch)
+}
+
+# versionCode = MAJOR*10000 + MINOR*100 + PATCH。这个公式要求 MINOR 与 PATCH 都 < 100，
+# 否则会撞号：1.0.100 与 1.1.0 都会算成 10100。所以满了直接拒绝，而不是给出一个重复编号。
+function Get-VersionCode([int[]]$Parts) {
+  if ($Parts[1] -ge 100 -or $Parts[2] -ge 100) {
+    throw ("versionCode 公式要求 MINOR 与 PATCH 都小于 100（当前 " + $Parts[1] + "." + $Parts[2] + "）；" +
+      "PATCH 满了应改为递增 MINOR；若确实需要三位以上的分段，得换 versionCode 公式（那属于 MAJOR 变更）")
+  }
+  return $Parts[0] * 10000 + $Parts[1] * 100 + $Parts[2]
+}
+
 # ── 1. 读并校验当前版本 ─────────────────────────────────────────────
 Step '1/5 读取并校验版本'
 $manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
@@ -54,21 +79,43 @@ if ($current -notmatch '^(\d+)\.(\d+)\.(\d+)$') {
   throw "package.json 的 version 不是 MAJOR.MINOR.PATCH：$current"
 }
 $major = [int]$Matches[1]; $minor = [int]$Matches[2]; $patch = [int]$Matches[3]
-Ok "当前 versionName=$current versionCode=$($major*10000 + $minor*100 + $patch)"
+Ok "当前 versionName=$current versionCode=$(Get-VersionCode @($major, $minor, $patch))"
 
-switch ($Bump) {
-  'major' { $major += 1; $minor = 0; $patch = 0 }
-  'minor' { $minor += 1; $patch = 0 }
-  'patch' { $patch += 1 }
-  'none' { }
-}
+$bumped = Get-BumpedParts @($major, $minor, $patch) $Bump
+$major = $bumped[0]; $minor = $bumped[1]; $patch = $bumped[2]
 $version = "$major.$minor.$patch"
-$versionCode = $major * 10000 + $minor * 100 + $patch
+$versionCode = Get-VersionCode @($major, $minor, $patch)
 if ($version -ne $current) { Ok "递增后 versionName=$version versionCode=$versionCode" }
 else { Ok '不递增（首个版本或 -Bump none）' }
 
 # ── 2. 门禁 ─────────────────────────────────────────────────────────
 Step '2/5 门禁（任一失败即中止）'
+
+# 版本算术自检：把「高位递增时低位归零」这条规则变成每次发布都跑一遍的断言。
+# 判例取真实历史：1.0.2 +minor 必须得到 1.1.0 —— v1.1.0 那次发布正是这一步（versionCode 10002 → 10100）。
+$bumpCases = @(
+  @{ from = @(1, 0, 2);  kind = 'patch'; expect = '1.0.3' },
+  @{ from = @(1, 0, 2);  kind = 'minor'; expect = '1.1.0' },
+  @{ from = @(1, 0, 99); kind = 'minor'; expect = '1.1.0' },
+  @{ from = @(1, 9, 9);  kind = 'minor'; expect = '1.10.0' },
+  @{ from = @(1, 4, 7);  kind = 'major'; expect = '2.0.0' },
+  @{ from = @(1, 1, 3);  kind = 'none';  expect = '1.1.3' }
+)
+foreach ($case in $bumpCases) {
+  $parts = Get-BumpedParts $case.from $case.kind
+  $got = "" + $parts[0] + "." + $parts[1] + "." + $parts[2]
+  if ($got -ne $case.expect) {
+    throw ("版本算术自检失败：" + ($case.from -join '.') + " + " + $case.kind + " 得到 $got，应为 " + $case.expect)
+  }
+}
+# 负向对照：撞号必须被拒绝（1.0.100 与 1.1.0 的 versionCode 都是 10100）
+$boundRejected = $false
+try { $null = Get-VersionCode @(1, 0, 100) } catch { $boundRejected = $true }
+if (-not $boundRejected) {
+  throw '版本算术自检失败：Get-VersionCode 没有拒绝 PATCH=100（会与 1.1.0 撞成同一个 versionCode）'
+}
+Ok '版本算术自检通过（1.0.2 +minor → 1.1.0，低位归零；MINOR/PATCH ≥ 100 的撞号被拒绝）'
+
 $libFiles = Get-ChildItem (Join-Path $pkgDir 'lib') -Filter '*.js' | Sort-Object Name
 foreach ($file in $libFiles) {
   & $node --check $file.FullName
