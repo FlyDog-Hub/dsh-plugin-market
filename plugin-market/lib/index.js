@@ -2,7 +2,8 @@
  * dsh-plugin-market — HOST 半（Cordis function plugin）。
  *
  * 职责只有一个：把 https://awesome-dsh-plugin.com/plugins.json 这类目录源
- * 变成宿主 HTTP 上的 7 个只读/操作端点，并把宿主可选的 pluginManager 服务桥接出去。
+ * 变成宿主 HTTP 上的 9 个只读/操作端点，并把宿主可选的 pluginManager 服务桥接出去。
+ * 其中 `/self-update` 的 GET/POST 是市场**自身**的升级通道（见 self-update.js）。
  *
  * 为什么只注册一条 prefix 路由：宿主对 (kind, path) 的重复注册会 throw，
  * 而七个端点又在同一个前缀下——一条 prefix 路由 + 内部分发是唯一不会互相撞的写法。
@@ -28,6 +29,7 @@ import {
   paginate,
   sortPlugins
 } from './catalog.js'
+import { createSelfUpdater } from './self-update.js'
 
 const PLUGIN_NAME = 'dsh-plugin-market'
 /**
@@ -300,7 +302,7 @@ function invalidQuery(res, picked) {
   sendError(res, 400, 'bad-request', { message: picked.message, hint: picked.hint })
 }
 
-function createHandlers(ctx, catalog) {
+function createHandlers(ctx, catalog, selfUpdate) {
   /** 目录不可用时如实报错，绝不用空列表冒充「没有结果」。 */
   async function requireCatalog(res) {
     const loaded = await catalog.ensure()
@@ -658,12 +660,93 @@ function createHandlers(ctx, catalog) {
         fetchedAt: result.cache.fetchedAt,
         source: result.cache.source
       })
+    },
+
+    /**
+     * 契约 §2.8/§2.9：市场自身的更新通道。
+     *
+     * GET 与 POST 必须合并成**一个** handler：路由表以 path 为键（见 http.js createRouteTable），
+     * 同一路径注册两次会让后一次覆盖前一次，GET 就永远拿到 405——这条是实测撞出来的，别拆回去。
+     */
+    async selfUpdate(req, res, url) {
+      if (String(req.method ?? 'GET').toUpperCase() === 'POST') return applySelfUpdate(req, res)
+      return checkSelfUpdate(req, res, url)
     }
+  }
+
+  /** 契约 §2.8：只读检查（会打一次网络，但有 10 分钟缓存）。 */
+  async function checkSelfUpdate(req, res, url) {
+    const force = pickQueryFlag(url.searchParams, 'force')
+    if (force.ok !== true) return invalidQuery(res, force)
+    const result = await selfUpdate.check({ force: force.value === true })
+    if (result.ok !== true) {
+      sendError(res, 502, result.code ?? 'self-update-unavailable', {
+        message: result.message,
+        hint: result.hint ?? '',
+        diagnostic: summarizeAttempts(result.attempts)
+      })
+      return
+    }
+    sendJson(res, 200, {
+      ok: true,
+      selfUpdate: {
+        current: result.current,
+        latest: result.latest,
+        latestTag: result.latestTag,
+        versionCode: result.versionCode,
+        build: result.build,
+        releasedAt: result.releasedAt,
+        updateAvailable: result.updateAvailable === true,
+        installable: result.installable === true,
+        channel: result.channel,
+        url: result.url,
+        sha256: result.sha256,
+        bytes: result.bytes,
+        checkedAt: result.checkedAt
+      }
+    })
+  }
+
+  /** 契约 §2.9：应用自更新（下载 → 三道校验 → 交给 pluginManager 安装，需重启 DSH 生效）。 */
+  async function applySelfUpdate(req, res) {
+    if (!requireSameOrigin(req, res)) return
+    const result = await selfUpdate.apply()
+    if (result.ok !== true) {
+      // 完整性/自证不过与「宿主装不上」要分开说：前者是拒绝安装，后者可以重试。
+      const code = result.code ?? 'internal'
+      sendError(res, 502, code, {
+        message: result.message,
+        hint: code === 'self-update-integrity'
+          ? '产物校验没通过，已拒绝安装。稍后重试；仍失败说明发布产物与清单不一致，请提 issue。'
+          : code === 'manager-unavailable'
+            ? '当前运行环境没有 pluginManager，更新只能走终端 dsh plugin。'
+            : '稍后重试；也可在终端按 Release 页面的命令升级。'
+      })
+      return
+    }
+    sendJson(res, 200, {
+      ok: true,
+      application: result.application,
+      from: result.from ?? null,
+      to: result.to ?? null,
+      requiresRestart: result.requiresRestart === true,
+      tarball: result.tarball ?? null,
+      bytes: result.bytes ?? null,
+      warnings: result.warnings ?? []
+    })
   }
 }
 
-function buildRoutes(ctx, catalog) {
-  const handlers = createHandlers(ctx, catalog)
+/** 把每个源的失败原因压成一行诊断串，附在 502 的 diagnostic 里。 */
+function summarizeAttempts(attempts) {
+  if (!Array.isArray(attempts) || attempts.length === 0) return ''
+  return attempts
+    .map((attempt) => `${attempt.label ?? attempt.id ?? '源'}：${attempt.reason ?? '失败'}`)
+    .join('；')
+}
+
+function buildRoutes(ctx, catalog, selfUpdate) {
+  const handlers = createHandlers(ctx, catalog, selfUpdate)
   return createRouteTable()
     .on(`${ROUTE_PREFIX}/status`, ['GET'], handlers.status)
     .on(`${ROUTE_PREFIX}/catalog`, ['GET'], handlers.catalog)
@@ -672,6 +755,7 @@ function buildRoutes(ctx, catalog) {
     .on(`${ROUTE_PREFIX}/remove`, ['POST'], handlers.remove)
     .on(`${ROUTE_PREFIX}/toggle`, ['POST'], handlers.toggle)
     .on(`${ROUTE_PREFIX}/refresh`, ['POST'], handlers.refresh)
+    .on(`${ROUTE_PREFIX}/self-update`, ['GET', 'POST'], handlers.selfUpdate)
 }
 
 export const name = PLUGIN_NAME
@@ -680,7 +764,9 @@ export const inject = ['webServer']
 export function apply(ctx) {
   const webServer = resolveWebServer(ctx)
   const catalog = createCatalogCache()
-  const routes = buildRoutes(ctx, catalog)
+  // managerOf 每次调用时再读：宿主服务可能比本插件晚注册（apply 时可能还拿不到）。
+  const selfUpdate = createSelfUpdater({ managerOf: () => managerOf(ctx), current: PLUGIN_VERSION })
+  const routes = buildRoutes(ctx, catalog, selfUpdate)
 
   const disposeRoute = webServer.register({
     kind: 'prefix',

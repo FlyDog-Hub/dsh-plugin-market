@@ -183,6 +183,53 @@ Query 参数（全部可选，未知参数忽略）：
 
 响应 `{ "ok": true, "count": 4412, "fetchedAt": "…", "source": "…" }`，失败时 `502 catalog-unavailable` / `504 catalog-timeout`（保留旧缓存并置 `stale: true`）。
 
+### 2.8 `GET /plugin-market/self-update`
+
+市场**自身**的更新检查（只读，但会打一次网络；结果缓存 10 分钟）。
+
+查询参数：`force=1` 绕过缓存（其它取值按 §1 视为参数错误）。
+
+响应：
+
+```json
+{
+  "ok": true,
+  "selfUpdate": {
+    "current": "1.0.2", "latest": "1.1.0", "latestTag": "v1.1.0",
+    "versionCode": 10100, "build": "+15.abc1234", "releasedAt": "2026-10-04T…",
+    "updateAvailable": true, "installable": true,
+    "channel": "jsdelivr-tags",
+    "url": "https://cdn.jsdelivr.net/gh/Winnie-0721/dsh-plugin-market@v1.1.0/releases/dsh-plugin-market-1.1.0.tgz",
+    "sha256": "…64 位十六进制…", "bytes": 309082,
+    "checkedAt": "2026-10-04T…"
+  }
+}
+```
+
+- `updateAvailable` 只在 `latest` **严格高于** `current`（同一套 `MAJOR.MINOR.PATCH` 比大小，不认预发布号）时为 `true`；相等或更低一律 `false`。
+- `installable` = 有更新 **且** 拿到了可校验的产物（`url` + `sha256` 都在）；假时客户端不出「更新到 x.y.z」，只提示。
+- `channel` 是实际命中的源 id：`jsdelivr-tags` → `jsdelivr-index` → `github-release`（顺序即优先级）。
+- 三个源都失败 ⇒ `502 self-update-unavailable`，`diagnostic` 里按顺序列出每个源各自的失败原因。
+
+### 2.9 `POST /plugin-market/self-update`
+
+应用自更新：下载产物 → 三道校验 → 交给宿主 `pluginManager.installBundle(<本地绝对路径>)`。
+
+请求体：`{}`（无字段）。要求来源判定通过（§1）。
+
+响应：`{ "ok": true, "application": "restart-required", "from": "1.0.2", "to": "1.1.0", "requiresRestart": true, "tarball": "<绝对路径>", "bytes": 309082, "warnings": [] }`。
+
+- `application` 由宿主给出；`requiresRestart` 恒为 `true`——**宿主半在进程里被 Loader 缓存，装完必须重启 DSH 才生效**（§见 docs/RELEASING.md §5）。客户端不得把它渲染成「已生效」。
+- 已是最新时返回 `{ "ok": true, "application": "up-to-date", … }`，**不下载、不调用安装**。
+- 失败码（都是 `502`，语义不同，客户端分开说明）：
+  - `self-update-integrity`：长度、`sha256` 或产物自证不符 ⇒ **拒绝安装**，重试也不该放过；
+  - `self-update-download`：CDN 传输中断/超时；
+  - `self-update-unavailable`：拿不到可用产物或版本号；
+  - `manager-unavailable`：宿主没有 `pluginManager`。
+
+**信任链（三道，缺一不可）**：① `index.json` 里的 tarball 必须是 `releases/*.tgz` 且拼在固定 CDN 前缀后（写别的 URL 一律不采信）；② 字节的 `sha256` 必须与清单一致；③ 解开 tarball 读 `package/package.json`，包名与版本必须与预期一致。
+第 ② 道不防「CDN 与清单一起被换」——那需要独立签名密钥，**目前没有**，这是已知限制而不是已解决的问题。
+
 ## 3. 目录抓取策略（host）
 
 源的选择顺序（每个源只尝试一次，源列表本身就是重试）：
@@ -236,7 +283,10 @@ window.__ModuleLoader__.load({
   - 点击调用 `layout.selectPanel('plugin-market')`；`layout` 不可用时按钮禁用并给出 tooltip。
   - 用 `props.usePanelInfo(info => info.activePanelId === 'plugin-market')` 做选中态；该 hook 不存在时按未选中渲染。
 - `MarketPage` 只读 `plugin-market` 路由，不直接访问宿主服务：
-  - 顶部：标题「插件市场」+ 版本号 + 「刷新目录」按钮 + 状态提示。
+  - 顶部：标题「插件市场」+ 版本号 + **三个按钮（源码顺序即渲染顺序）**：「更新插件」（带可更新数量角标）→「检查市场更新」（状态机：检查中 / 已是最新 / 更新到 x.y.z / 更新中）→「刷新目录」。前两个是 v1.1.0 新增的，插在原有「刷新目录」左边；三者都在标题右侧的 `.dshpm-headerActions` 里，窄宽度下整组换行。
+  - 「更新插件」只负责**提示**：点开就地展开「可更新的插件」面板，逐条列出 `version → latest` 与各自一个「更新到 x.y.z」按钮；**没有**一键全更新。列表数据来自 `/installed` 的 `updateAvailable`/`latest`（宿主已把目录 join 进去），因此不依赖发现页的目录请求是否完成。
+  - 侧边栏入口在 `updateAvailable` 计数 > 0 时渲染角标；计数由 `/installed` 结果驱动（模块级 5 分钟 TTL + 在途请求复用），入口与面板共享同一份。
+  - 有更新时的提示：面板内提示条（成功/信息类 4.6s 自动收起，带倒计时线；警告/错误保留）+ 顶部不确定性进度条（任何写操作进行中）。
   - 页签：`发现`（目录）/ `已安装`。
   - 发现页：搜索框（回车或 300ms 防抖）、分类 chips、排序下拉、卡片网格、分页（上一页/下一页 + 第 x/y 页）。
   - 卡片：名称 + 作者 + 描述（按界面语言）+ star/下载 + 版本 + 分类 + 「安装」/「已安装」/「更新」按钮 + 「详情」。
@@ -248,6 +298,9 @@ window.__ModuleLoader__.load({
 - 文案 zh/en 双语，跟随宿主语言，不写死中文。
 - 颜色一律用 CSS 变量并带兜底，例如 `var(--dsw-alias-label-primary, #1a1a1a)`；可用 token：`--dsw-alias-bg-base`、`--dsw-alias-bg-layer-1`、`--dsw-alias-bg-layer-2`、`--dsw-alias-bg-overlay`、`--dsw-alias-border-l1`、`--dsw-alias-border-l2`、`--dsw-alias-brand-primary`、`--dsw-alias-label-primary`、`--dsw-alias-label-secondary`、`--dsw-alias-state-error-primary`、`--dsw-alias-state-success-primary`、`--dsw-alias-state-warn-primary`、`--dsw-alias-state-idle-primary`、`--dsw-specific-sidebar-fill`。
 - 请求封装：`fetch(url, {signal})`；组件卸载/离开面板时 abort；所有响应按 §1 解析，`ok !== true` 时抛带 `code/message/hint` 的错误对象。
+- 动效（v1.1.0）：全部由 CSS 驱动，三条不可违反的约束——① 基础样式里不写 `opacity: 0`（动效被关掉时元素必须直接可见）；② 只动 `transform`/`opacity`/`max-height`，不动宽高与位置；③ 升入类动画一律 `animation-fill-mode: backwards`（用 `forwards`/`both` 会把 `transform` 钉在末帧，卡片 hover 抬升与按钮按下缩放会全部失效）。
+  `@media (prefers-reduced-motion: reduce)` 下关掉 `.dshpm-root` 内所有动画与过渡，内容按最终位置完全可见。
+  错峰入场用内联 `animationDelay`（卡片 22ms×序号、列表行 26ms×序号，序号封顶 12）。
 
 ## 5. 验收断言（verifier 用）
 
@@ -264,3 +317,11 @@ window.__ModuleLoader__.load({
 6. `POST /plugin-market/install` 用目录外 spec 返回 400 `not-in-catalog`。
 7. 卸载自身返回 400 `not-allowed`。
 8. 目录缓存：连续两次 `GET /catalog` 第二次 `fetchedAt` 不变；`POST /refresh` 后变化。
+9. **自更新通道**（`verify/self-update.test.mjs` 离线覆盖 + scratch 宿主实测）：
+   - `GET /plugin-market/self-update` 返回 `ok:true`，`latest` 等于仓库最新标签，`current === latest` 时 `updateAvailable:false`；
+   - 三个源全不通时 `502 self-update-unavailable` 且 `diagnostic` 列出三条失败原因；
+   - 校验不过（sha256 / 长度 / 产物自证）时 `apply` **不调用** `pluginManager.installBundle`；
+   - `index.json` 里写非 `releases/*.tgz` 的地址时拒绝且不下载。
+10. **同一路径的 GET 与 POST 必须只有一个路由登记项**：路由表以 path 为键，登记两次会互相覆盖，`GET /self-update` 会变成 405。改这里要重跑 §5 第 9 条的 GET 断言。
+11. **真实浏览器渲染**（`verify/ui-check.ps1` → `verify/market-ui.e2e.mjs`）：侧边栏入口可点开面板；头部三个按钮文案与顺序正确；有 2 个可更新插件时角标显示 `2`；点「更新插件」展开列表且每行都有自己的「更新到 x.y.z」、没有批量按钮；卡片/列表行的 `animation-name` 含 `dshpm-rise` 且 `animation-fill-mode` 是 `backwards`；切到 `prefers-reduced-motion: reduce` 后 `animation-name` 变 `none` 而列表行仍然可见（行数不变）。
+12. **文案与动效不变量**（`verify/client-copy.test.mjs`）：zh/en 键集完全一致；代码里用到的每个 `t("字面量键")` 都在两种语言里存在；没有僵尸文案键；被引用的 `@keyframes` 都有定义；没有任何升入动画用 `forwards`/`both`。

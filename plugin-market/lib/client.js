@@ -19,6 +19,8 @@ window.__ModuleLoader__.load({
     var SELF_NAME = "dsh-plugin-market";
     var STYLE_ID = "dsh-plugin-market-style";
     var SEARCH_DEBOUNCE_MS = 300;
+    /** 成功/信息类提示的存活时间：与 .dshpm-noticeTimer 的动画时长必须一致。 */
+    var NOTICE_DISMISS_MS = 4600;
     var PAGE_SIZE = 24;
     var MAX_QUERY_LENGTH = 128;
 
@@ -211,7 +213,42 @@ window.__ModuleLoader__.load({
         "detail.version": "版本",
         "detail.added": "收录时间",
         "meta.stars": "★ {count}",
-        "meta.downloads": "↓ {count}"
+        "meta.downloads": "↓ {count}",
+        "action.checkSelf": "检查市场更新",
+        "action.checkingSelf": "检查中…",
+        "action.selfCurrent": "已是最新",
+        "action.recheckSelf": "重新检查",
+        "action.updateSelf": "更新到 {version}",
+        "action.updatingSelf": "正在更新市场…",
+        "action.updates": "更新插件",
+        "self.available": "发现新版本 v{version}",
+        "self.linkNote": "安装会把本机的 link: 依赖替换为下载并校验过的本地包；要回到开发目录，再把这个路径 add 回来。",
+        "updates.title": "可更新的插件",
+        "updates.entryBadge": "{count} 个插件可更新",
+        "updates.subtitle": "已安装 {installed} 个 · {count} 个有新版本",
+        "updates.subtitleEmpty": "已安装 {installed} 个 · 全部最新",
+        "updates.hint": "逐个确认：一次只改动你点的那一个依赖，失败不影响其余。",
+        "updates.loading": "正在读取已安装列表…",
+        "updates.empty.title": "全部都是最新",
+        "updates.empty.body": "已安装的插件都没有可用更新。目录数据更新于 {updated}。",
+        "updates.failed.title": "拿不到可更新列表",
+        "updates.failed.body": "读取已安装列表失败：{reason}。稍后重试。",
+        "updates.noCatalog.title": "目录还没就绪",
+        "updates.noCatalog.body": "要判断有没有新版本，得先把目录读进来：点「刷新目录」后重试。",
+        "updates.failed": "{name} 更新失败",
+        "notice.updatesFound": "发现 {count} 个插件有新版本，点「更新插件」逐个确认。",
+        "notice.selfFound": "插件市场有新版本 v{version}：点「更新到 {version}」安装。",
+        "notice.selfCurrent": "插件市场已是最新（v{version}）。",
+        "notice.selfUpdated": "插件市场已更新到 v{version}；重启 DSH 后新代码才生效。",
+        "err.self-update-unavailable.title": "更新通道没有回应",
+        "err.self-update-unavailable.why": "jsDelivr 与 GitHub 三个源都没给出可用版本，这台机器可能访问不了它们。",
+        "err.self-update-unavailable.next": "稍后重试；也可在终端用 dsh plugin add <Release 附件地址> 手动升级。",
+        "err.self-update-integrity.title": "产物校验没通过",
+        "err.self-update-integrity.why": "下载到的 tarball 与发布清单对不上（长度、sha256，或它自报的包名/版本不符），已拒绝安装。",
+        "err.self-update-integrity.next": "重试一次；仍失败说明发布产物与清单不一致，请到仓库提 issue。",
+        "err.self-update-download.title": "下载发布产物失败",
+        "err.self-update-download.why": "CDN 在传输中断开或超时，没有拿到完整字节。",
+        "err.self-update-download.next": "稍后重试；也可在终端用 dsh plugin add <Release 附件地址> 手动升级。"
       },
       en: {
         "market.title": "Plugin Market",
@@ -400,7 +437,42 @@ window.__ModuleLoader__.load({
         "detail.version": "Version",
         "detail.added": "Added",
         "meta.stars": "★ {count}",
-        "meta.downloads": "↓ {count}"
+        "meta.downloads": "↓ {count}",
+        "action.checkSelf": "Check for updates",
+        "action.checkingSelf": "Checking…",
+        "action.selfCurrent": "Up to date",
+        "action.recheckSelf": "Check again",
+        "action.updateSelf": "Update to {version}",
+        "action.updatingSelf": "Updating the market…",
+        "action.updates": "Plugin updates",
+        "self.available": "New version v{version} available",
+        "self.linkNote": "Installing replaces this machine's link: dependency with the verified local package; add the source path back to return to it.",
+        "updates.title": "Plugin updates",
+        "updates.entryBadge": "{count} plugins can update",
+        "updates.subtitle": "{installed} installed · {count} have a newer version",
+        "updates.subtitleEmpty": "{installed} installed · all up to date",
+        "updates.hint": "Confirm one at a time: each update changes only the dependency you click, and a failure leaves the rest alone.",
+        "updates.loading": "Reading installed plugins…",
+        "updates.empty.title": "Everything is up to date",
+        "updates.empty.body": "No installed plugin has a newer version. Catalog data is from {updated}.",
+        "updates.failed.title": "The update list is unavailable",
+        "updates.failed.body": "Reading the installed list failed: {reason}. Try again later.",
+        "updates.noCatalog.title": "The catalog is not ready",
+        "updates.noCatalog.body": "Deciding whether a newer version exists needs the catalog: refresh it and try again.",
+        "updates.failed": "{name} failed to update",
+        "notice.updatesFound": "{count} plugins have a newer version — open Plugin updates to confirm them one by one.",
+        "notice.selfFound": "Plugin market v{version} is available: click “Update to {version}”.",
+        "notice.selfCurrent": "The plugin market is up to date (v{version}).",
+        "notice.selfUpdated": "The plugin market was updated to v{version}; the new code applies after DSH restarts.",
+        "err.self-update-unavailable.title": "No update channel answered",
+        "err.self-update-unavailable.why": "None of the jsDelivr and GitHub sources returned a usable version; this machine may not reach them.",
+        "err.self-update-unavailable.next": "Try again later, or upgrade in a terminal with dsh plugin add <release asset URL>.",
+        "err.self-update-integrity.title": "Artifact verification failed",
+        "err.self-update-integrity.why": "The downloaded tarball does not match the published manifest (length, sha256, or the name/version it declares), so the install was refused.",
+        "err.self-update-integrity.next": "Retry once; if it keeps failing the published artifact and manifest disagree — please open an issue.",
+        "err.self-update-download.title": "Downloading the artifact failed",
+        "err.self-update-download.why": "The CDN dropped the connection or timed out before the full bytes arrived.",
+        "err.self-update-download.next": "Try again later, or upgrade in a terminal with dsh plugin add <release asset URL>."
       }
     };
 
@@ -629,6 +701,12 @@ window.__ModuleLoader__.load({
       },
       refresh: function (signal) {
         return requestJSON("/refresh", { method: "POST", body: {}, signal: signal });
+      },
+      selfUpdate: function (force, signal) {
+        return requestJSON("/self-update" + (force ? "?force=1" : ""), { signal: signal });
+      },
+      applySelfUpdate: function () {
+        return requestJSON("/self-update", { method: "POST", body: {} });
       }
     };
 
@@ -649,6 +727,9 @@ window.__ModuleLoader__.load({
       "toggle-failed": true,
       "not-allowed": true,
       "cross-origin": true,
+      "self-update-unavailable": true,
+      "self-update-integrity": true,
+      "self-update-download": true,
       "bad-request": true,
       "method-not-allowed": true,
       "not-found": true,
@@ -714,6 +795,34 @@ window.__ModuleLoader__.load({
         el("path", { key: "b", d: "M13.2 8a5.2 5.2 0 0 1-8.9 3.7" }),
         el("path", { key: "c", d: "M11.7 1.6v2.7H9" }),
         el("path", { key: "d", d: "M4.3 14.4v-2.7H7" })
+      ]);
+    }
+
+    // 市场自身的更新：向上箭头 + 底座，与「安装/更新插件」的向下箭头区分开。
+    function IconUpgrade(props) {
+      var size = (props && props.size) || 14;
+      return svgRoot(size, [
+        el("path", { key: "a", d: "M8 11.4V2.6" }),
+        el("path", { key: "b", d: "M4.6 6 8 2.6 11.4 6" }),
+        el("path", { key: "c", d: "M2.8 13.4h10.4" })
+      ]);
+    }
+
+    function IconDownload(props) {
+      var size = (props && props.size) || 14;
+      return svgRoot(size, [
+        el("path", { key: "a", d: "M8 2.6v8.8" }),
+        el("path", { key: "b", d: "M4.6 8 8 11.4 11.4 8" }),
+        el("path", { key: "c", d: "M2.8 13.4h10.4" })
+      ]);
+    }
+
+    /** 抽屉标题用：两层叠片。 */
+    function IconLayers(props) {
+      var size = (props && props.size) || 14;
+      return svgRoot(size, [
+        el("path", { key: "a", d: "M8 2.2 14 5.4 8 8.6 2 5.4 8 2.2Z" }),
+        el("path", { key: "b", d: "M2.6 8.6 8 11.5l5.4-2.9" })
       ]);
     }
 
@@ -908,12 +1017,110 @@ window.__ModuleLoader__.load({
 .dshpm-switch:disabled { opacity:.5; cursor:not-allowed; }
 .dshpm-switch:focus-visible { outline:var(--dsw-focus-ring-width,2px) solid var(--dsw-focus-ring-color,var(--dsw-alias-brand-primary,#4d6bfe)); outline-offset:2px; }
 .dshpm-sr { position:absolute; width:1px; height:1px; margin:-1px; padding:0; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; border:0; }
+/* ── 头部两个按钮：更新插件（带计数角标）与市场自更新 ── */
+.dshpm-headerActions { flex-wrap:wrap; justify-content:flex-end; }
+.dshpm-btn--attention { border-color:var(--dsw-alias-state-warn-primary,#b7791f); color:var(--dsw-alias-state-warn-primary,#b7791f); }
+.dshpm-count { display:inline-flex; align-items:center; justify-content:center; min-width:16px; height:16px; margin-left:2px; padding:0 4px; border-radius:999px; background:var(--dsw-alias-state-warn-primary,#b7791f); color:#fff; font-size:.85em; font-weight:600; line-height:1; }
+.dshpm-selfNote { display:flex; align-items:flex-start; gap:6px; margin-top:8px; padding:6px 9px; border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.1)); border-left:3px solid var(--dsw-alias-brand-primary,#4d6bfe); border-radius:var(--dsw-radius-md,8px); background:var(--dsw-alias-bg-layer-1,transparent); color:var(--dsw-alias-label-secondary,#6b6b6b); font-size:.79em; line-height:1.55; }
+.dshpm-selfNote svg { flex:none; margin-top:2px; }
+
+/* ── 顶部不确定性进度条：任何写操作进行中都会出现 ── */
+.dshpm-progress { position:relative; height:2px; margin:-6px 0 0; border-radius:2px; overflow:hidden; background:var(--dsw-alias-border-l1,rgba(127,127,127,.16)); }
+.dshpm-progress::after { content:""; position:absolute; top:0; bottom:0; width:38%; border-radius:2px; background:var(--dsw-alias-brand-primary,#4d6bfe); animation:dshpm-slide 1.15s cubic-bezier(.4,0,.2,1) infinite; }
+
+/* ── 可更新插件面板：就地展开，不遮挡列表、不制造第二个滚动容器 ── */
+.dshpm-updatesPanel { display:flex; flex-direction:column; gap:10px; box-sizing:border-box; overflow:hidden; max-height:1600px; padding:12px 14px; border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.1)); border-radius:var(--dsw-radius-md,10px); background:var(--dsw-alias-bg-layer-1,transparent); transform-origin:top center; transition:max-height .34s cubic-bezier(.22,1,.36,1), opacity .2s ease, visibility .34s, padding .3s ease; }
+.dshpm-updatesPanel[data-open="false"] { max-height:0; padding-top:0; padding-bottom:0; border-width:0; opacity:0; visibility:hidden; pointer-events:none; }
+.dshpm-drawerHead { display:flex; align-items:flex-start; gap:8px; }
+.dshpm-drawerIcon { flex:none; display:inline-flex; margin-top:2px; color:var(--dsw-alias-brand-primary,#4d6bfe); }
+.dshpm-drawerHeading { flex:1 1 auto; min-width:0; }
+.dshpm-drawerTitle { font-weight:600; }
+.dshpm-drawerSubtitle { color:var(--dsw-alias-label-secondary,#6b6b6b); font-size:.82em; }
+.dshpm-drawerClose { flex:none; }
+.dshpm-drawerHint { color:var(--dsw-alias-label-secondary,#6b6b6b); font-size:.79em; }
+.dshpm-drawerBody { display:flex; flex-direction:column; gap:8px; }
+.dshpm-drawerList { display:flex; flex-direction:column; gap:8px; }
+.dshpm-drawerLoading { display:flex; align-items:center; gap:6px; color:var(--dsw-alias-label-secondary,#6b6b6b); font-size:.8em; }
+.dshpm-drawerFoot { display:flex; gap:6px; justify-content:flex-end; }
+.dshpm-updateRow { display:flex; align-items:flex-start; gap:10px; flex-wrap:wrap; box-sizing:border-box; padding:10px 12px; border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.1)); border-radius:var(--dsw-radius-md,10px); background:var(--dsw-alias-bg-base,transparent); }
+.dshpm-updateMain { flex:1 1 240px; min-width:0; display:flex; flex-direction:column; gap:3px; }
+.dshpm-updateName { font-weight:600; overflow-wrap:anywhere; }
+.dshpm-updateVersions { display:flex; align-items:center; gap:6px; font-size:.82em; color:var(--dsw-alias-label-secondary,#6b6b6b); }
+.dshpm-versionFrom { text-decoration:line-through; opacity:.75; }
+.dshpm-versionTo { color:var(--dsw-alias-state-success-primary,#1f9d55); font-weight:600; }
+.dshpm-updateDesc { color:var(--dsw-alias-label-secondary,#6b6b6b); font-size:.82em; overflow-wrap:anywhere; }
+.dshpm-updateActions { flex:none; display:flex; align-items:center; gap:8px; }
+.dshpm-updateResult { display:flex; align-items:center; gap:5px; font-size:.8em; color:var(--dsw-alias-state-success-primary,#1f9d55); }
+.dshpm-updateResult[data-ok="false"] { color:var(--dsw-alias-state-error-primary,#d93025); }
+.dshpm-updateRow[data-busy="true"] { border-color:var(--dsw-alias-brand-primary,#4d6bfe); }
+.dshpm-updateRow[data-done="true"] { border-color:var(--dsw-alias-state-success-primary,#1f9d55); }
+.dshpm-updateRow--ghost { height:62px; border-style:dashed; background:linear-gradient(90deg,var(--dsw-alias-bg-layer-1,rgba(127,127,127,.06)),var(--dsw-alias-bg-layer-2,rgba(127,127,127,.16)),var(--dsw-alias-bg-layer-1,rgba(127,127,127,.06))); background-size:200% 100%; animation:dshpm-shimmer 1.3s linear infinite; }
+.dshpm-entryBadge { flex:none; margin-left:auto; display:inline-flex; align-items:center; justify-content:center; min-width:16px; height:16px; padding:0 5px; border-radius:999px; background:var(--dsw-alias-state-warn-primary,#b7791f); color:#fff; font-size:.78em; font-weight:600; line-height:1; }
+.dshpm-entry[data-wide="false"] .dshpm-entryBadge { position:absolute; top:3px; right:3px; margin:0; min-width:14px; height:14px; padding:0 3px; font-size:.68em; }
+
+/* ───────────────────────────── 动效 ─────────────────────────────
+   三条原则，改这里之前先读：
+   1. 基础样式里绝不写 opacity:0——动画被关掉（prefers-reduced-motion）时元素必须直接可见；
+   2. 只动 transform / opacity / max-height，不动宽高与位置，避免列表重排抖动；
+   3. 升入类动画一律用 backwards 填充：用 forwards/both 会把 transform 钉在末帧，
+      卡片 hover 的 translateY 与按钮 active 的缩放就再也生效不了。 */
+.dshpm-entry { position:relative; transition:background-color .18s ease, transform .16s ease; }
+.dshpm-entry:active:not(:disabled) { transform:scale(.98); }
+.dshpm-entry[data-active="true"] .dshpm-entryIcon { animation:dshpm-pop .26s cubic-bezier(.22,1,.36,1) backwards; }
+.dshpm-entryBadge { animation:dshpm-pop .32s cubic-bezier(.22,1,.36,1) backwards, dshpm-breathe 2.6s ease-in-out 3; }
+.dshpm-btn { transition:background-color .16s ease, border-color .16s ease, color .16s ease, box-shadow .18s ease, transform .12s ease; }
+.dshpm-btn:hover:not(:disabled) { box-shadow:0 1px 6px rgba(0,0,0,.08); }
+.dshpm-btn:active:not(:disabled) { transform:scale(.975); }
+.dshpm-btn--primary:hover:not(:disabled) { box-shadow:0 3px 12px rgba(77,107,254,.36); }
+.dshpm-btn--pulse { animation:dshpm-glow 1.9s ease-in-out 2; }
+.dshpm-card { transition:transform .18s cubic-bezier(.22,1,.36,1), box-shadow .2s ease, border-color .18s ease; animation:dshpm-rise .3s cubic-bezier(.22,1,.36,1) backwards; }
+.dshpm-card:hover { transform:translateY(-2px); box-shadow:0 6px 18px rgba(0,0,0,.09); border-color:var(--dsw-alias-border-l2,rgba(0,0,0,.16)); }
+.dshpm-row { transition:border-color .18s ease, box-shadow .2s ease; animation:dshpm-rise .28s cubic-bezier(.22,1,.36,1) backwards; }
+.dshpm-row:hover { box-shadow:0 4px 14px rgba(0,0,0,.07); }
+.dshpm-updateRow { animation:dshpm-rise .26s cubic-bezier(.22,1,.36,1) backwards; transition:border-color .18s ease, transform .16s ease, box-shadow .2s ease; }
+.dshpm-updateRow:hover { transform:translateX(2px); }
+.dshpm-chip { transition:background-color .16s ease, color .16s ease, border-color .16s ease, transform .14s ease; }
+.dshpm-chip:hover { transform:translateY(-1px); }
+.dshpm-chip[data-active="true"] { animation:dshpm-pop .22s ease-out backwards; }
+.dshpm-tabs { position:relative; }
+.dshpm-tab { position:relative; border-bottom-color:transparent; transition:color .22s ease; }
+/* 两个页签的底线用同一个 transform 时长反向缩放：视觉上就是从一边滑到另一边。 */
+.dshpm-tab[data-active="true"] { border-bottom-color:transparent; }
+.dshpm-tab::after { content:""; position:absolute; left:10px; right:10px; bottom:0; height:2px; border-radius:2px; background:var(--dsw-alias-brand-primary,#4d6bfe); transform:scaleX(0); transform-origin:right center; transition:transform .26s cubic-bezier(.22,1,.36,1); }
+.dshpm-tab[data-active="true"]::after { transform:scaleX(1); transform-origin:left center; }
+.dshpm-notice { animation:dshpm-slidein .3s cubic-bezier(.22,1,.36,1) backwards; }
+.dshpm-banner { animation:dshpm-rise .28s cubic-bezier(.22,1,.36,1) backwards; }
+.dshpm-detail { animation:dshpm-expand .26s cubic-bezier(.22,1,.36,1) backwards; }
+.dshpm-empty { animation:dshpm-rise .3s cubic-bezier(.22,1,.36,1) backwards; }
+.dshpm-grid, .dshpm-installed, .dshpm-drawerList { animation:dshpm-fade .22s ease backwards; }
+.dshpm-badge { transition:color .18s ease, border-color .18s ease; }
+.dshpm-badge--warn { animation:dshpm-breathe 2.8s ease-in-out 2; }
+.dshpm-search { transition:border-color .18s ease, box-shadow .2s ease; }
+.dshpm-search:focus-within { box-shadow:0 0 0 3px rgba(77,107,254,.14); }
+.dshpm-select { transition:border-color .18s ease; }
+.dshpm-tag { transition:background-color .16s ease; }
+.dshpm-switch { transition:background-color .2s ease; }
+.dshpm-count[data-pop="true"] { animation:dshpm-pop .34s cubic-bezier(.22,1,.36,1) backwards, dshpm-breathe 2.6s ease-in-out 3; }
+.dshpm-updatesPanel[data-open="true"] { animation:dshpm-expand .3s cubic-bezier(.22,1,.36,1) backwards; }
+.dshpm-skeleton { animation:dshpm-shimmer 1.3s linear infinite; }
+.dshpm-notice { position:relative; overflow:hidden; }
+.dshpm-noticeTimer { position:absolute; left:0; right:0; bottom:0; height:2px; background:currentColor; opacity:.3; transform-origin:left center; animation:dshpm-countdown 4.6s linear forwards; }
+@keyframes dshpm-countdown { from { transform:scaleX(1); } to { transform:scaleX(0); } }
 @keyframes dshpm-shimmer { 0% { background-position:200% 0; } 100% { background-position:-200% 0; } }
 @keyframes dshpm-spin { 0% { transform:rotate(0deg); } 100% { transform:rotate(360deg); } }
+@keyframes dshpm-slide { 0% { transform:translateX(-100%); } 100% { transform:translateX(300%); } }
+@keyframes dshpm-rise { from { opacity:0; transform:translateY(7px); } to { opacity:1; transform:none; } }
+@keyframes dshpm-fade { from { opacity:0; } to { opacity:1; } }
+@keyframes dshpm-expand { from { opacity:0; transform:translateY(-4px); } to { opacity:1; transform:none; } }
+@keyframes dshpm-slidein { from { opacity:0; transform:translateX(14px); } to { opacity:1; transform:none; } }
+@keyframes dshpm-pop { 0% { transform:scale(.82); } 60% { transform:scale(1.06); } 100% { transform:scale(1); } }
+@keyframes dshpm-breathe { 0%, 100% { opacity:1; } 50% { opacity:.62; } }
+@keyframes dshpm-glow { 0%, 100% { box-shadow:0 1px 2px rgba(77,107,254,.28); } 50% { box-shadow:0 2px 14px rgba(77,107,254,.55); } }
 .dshpm-spinner { animation:dshpm-spin .9s linear infinite; }
 @media (prefers-reduced-motion: reduce) {
-  .dshpm-skeleton, .dshpm-spinner { animation:none; }
-  .dshpm-switch::after { transition:none; }
+  /* 动效是装饰：关掉之后每个元素都必须按最终位置、完全可见地渲染。 */
+  .dshpm-root *, .dshpm-root *::before, .dshpm-root *::after,
+  .dshpm-entry, .dshpm-entry * { animation:none !important; transition:none !important; }
 }
 `;
 
@@ -963,6 +1170,54 @@ window.__ModuleLoader__.load({
       } catch (watchError) {
         // 拿不到 fiber 生命周期时让观察器留在本页：它只在样式缺失时补一次，不会碰到别人的节点。
       }
+    }
+
+    // ───────────────────────────── 可更新插件数（入口与页面共享） ─────────────────────────────
+    // 侧边栏入口拿不到页面 state，所以计数放在模块级：谁读到新结果就 publishChange()，
+    // 入口角标与页面头部按钮跟着一起重渲染。5 分钟内不重复打网络；请求在途时复用同一个 promise
+    // （入口与面板可能同时挂载，那样只会发一次）。
+    var UPDATE_COUNT_TTL_MS = 5 * 60 * 1000;
+    var updateCountState = { count: 0, at: 0, known: false, inflight: null };
+
+    function updateCountSnapshot() {
+      return { count: updateCountState.count, known: updateCountState.known === true };
+    }
+
+    /** 页面自己拉过 /installed 之后把结果交进来：省掉入口那次重复请求。 */
+    function publishUpdateCount(bundles) {
+      var count = 0;
+      if (Array.isArray(bundles)) {
+        for (var i = 0; i < bundles.length; i++) {
+          if (bundles[i] && bundles[i].updateAvailable === true) count++;
+        }
+      }
+      var changed = count !== updateCountState.count || updateCountState.known !== true;
+      updateCountState.count = count;
+      updateCountState.at = Date.now();
+      updateCountState.known = true;
+      if (changed) publishChange();
+      return count;
+    }
+
+    /**
+     * 读一次可更新数：TTL 内用上次结果，否则打一次 /installed。
+     * 失败不抛——入口只是少一个角标，不该把异常冒进 React 的 effect。
+     */
+    function ensureUpdateCount(force) {
+      var now = Date.now();
+      if (!force && updateCountState.known && now - updateCountState.at < UPDATE_COUNT_TTL_MS) {
+        return Promise.resolve(updateCountSnapshot());
+      }
+      if (updateCountState.inflight) return updateCountState.inflight;
+      var request = api.installed(undefined).then(function (payload) {
+        updateCountState.inflight = null;
+        return { count: publishUpdateCount(payload && payload.bundles), known: true };
+      }, function () {
+        updateCountState.inflight = null;
+        return updateCountSnapshot();
+      });
+      updateCountState.inflight = request;
+      return request;
     }
 
     // ───────────────────────────── 运行期接线（apply 填，组件读） ─────────────────────────────
@@ -1050,11 +1305,20 @@ window.__ModuleLoader__.load({
       var wide = !props || props.wide !== false;
       var active = useActivePanel(props);
       var available = RUNTIME.panelAvailable;
+      var updates = updateCountSnapshot();
+      // 入口是「有更新」最该被看见的地方：挂载时读一次可更新数（模块级 TTL 去重，
+      // 面板打开过就复用那份结果，不会重复打网络）。
+      React.useEffect(function () {
+        if (!available) return undefined;
+        ensureUpdateCount(false);
+        return undefined;
+      }, [available]);
       return el("button", {
         type: "button",
         className: "dshpm-entry",
         "data-wide": wide ? "true" : "false",
         "data-active": active ? "true" : "false",
+        "data-hasUpdates": updates.known && updates.count > 0 ? "true" : "false",
         "aria-label": t("market.title"),
         "aria-current": active ? "page" : undefined,
         disabled: !available,
@@ -1062,7 +1326,14 @@ window.__ModuleLoader__.load({
         onClick: openMarketPanel
       },
         el("span", { className: "dshpm-entryIcon" }, el(IconMarket, { size: wide ? 16 : 18 })),
-        wide ? el("span", { className: "dshpm-entryLabel" }, t("market.title")) : null
+        wide ? el("span", { className: "dshpm-entryLabel" }, t("market.title")) : null,
+        updates.known && updates.count > 0
+          ? el("span", {
+            className: "dshpm-entryBadge",
+            title: t("updates.entryBadge", { count: updates.count }),
+            "aria-label": t("updates.entryBadge", { count: updates.count })
+          }, String(updates.count))
+          : null
       );
     }
 
@@ -1134,6 +1405,13 @@ window.__ModuleLoader__.load({
       );
     }
 
+    /** 成功/信息类提示会自己收起：渲染时打标记，NoticeBar 才画那条倒计时线。 */
+    function withAutoDismiss(notice) {
+      if (!notice) return notice;
+      if (notice.kind !== "success" && notice.kind !== "info") return notice;
+      return { kind: notice.kind, text: notice.text, error: notice.error, autoDismiss: true };
+    }
+
     function NoticeBar(props) {
       var notice = props.notice;
       var kind = notice.kind || "info";
@@ -1155,6 +1433,10 @@ window.__ModuleLoader__.load({
         props.onDismiss
           ? el("button", { type: "button", className: "dshpm-iconBtn", onClick: props.onDismiss, "aria-label": t("action.clear"), title: t("action.clear") },
             el(IconClose, { size: 12 }))
+          : null,
+        // 会自动收起的那两类（成功/信息）带一条走完即收的进度线，让「它自己会消失」可见。
+        notice.autoDismiss
+          ? el("span", { className: "dshpm-noticeTimer", "aria-hidden": "true" })
           : null
       );
     }
@@ -1218,7 +1500,11 @@ window.__ModuleLoader__.load({
           : updateAvailable ? t("action.update", { version: item.version || "" })
             : installed ? t("action.installed") : t("action.install");
       var installTitle = !canInstall ? t("list.notInstallable") : readOnly ? t("readonly.body") : "";
-      return el("article", { className: "dshpm-card" },
+      return el("article", {
+        className: "dshpm-card",
+        // 错峰入场：整页卡片依次浮起，但延迟封顶，翻到第 24 张也不会等。
+        style: { animationDelay: Math.min(props.index || 0, 12) * 22 + "ms" }
+      },
         el("div", { className: "dshpm-cardHead" },
           el("h3", { className: "dshpm-cardName" }, item.name || item.id),
           el("span", { className: "dshpm-cardOwner" }, "@" + (item.owner || "")),
@@ -1369,10 +1655,11 @@ window.__ModuleLoader__.load({
           ? el(ErrorState, { error: state.error, onRetry: props.onRetry })
           : null,
         items.length
-          ? el("div", { className: "dshpm-grid" }, items.map(function (item) {
+          ? el("div", { className: "dshpm-grid" }, items.map(function (item, index) {
             var key = item.id || item.name;
             return el(PluginCard, {
               key: key,
+              index: index,
               item: item,
               categories: props.categories,
               expanded: !!props.expanded[key],
@@ -1431,7 +1718,10 @@ window.__ModuleLoader__.load({
           ? t("installed.notRemovable")
           : hostReason || (props.readOnly ? t("readonly.body") : "");
       var confirm = props.confirming;
-      return el("div", { className: "dshpm-row" },
+      return el("div", {
+        className: "dshpm-row",
+        style: { animationDelay: Math.min(props.index || 0, 12) * 26 + "ms" }
+      },
         el("div", { className: "dshpm-rowLayout" },
           el("div", { className: "dshpm-rowMain" },
             el("div", { className: "dshpm-rowHead" },
@@ -1550,10 +1840,11 @@ window.__ModuleLoader__.load({
         state.phase === "error" && state.data
           ? el(ErrorState, { error: state.error, onRetry: props.onRetry })
           : null,
-        bundles.map(function (bundle) {
+        bundles.map(function (bundle, index) {
           var key = bundle.name;
           return el(BundleRow, {
             key: key,
+            index: index,
             bundle: bundle,
             entries: entriesForBundle(plugins, bundle),
             expanded: !!props.expanded[key],
@@ -1601,6 +1892,120 @@ window.__ModuleLoader__.load({
       { id: "downloads", key: "sort.downloads" },
       { id: "name", key: "sort.name" }
     ];
+
+    // ───────────────────────────── 可更新插件抽屉 ─────────────────────────────
+    // 「更新插件」按钮只负责**提示**：这里列出哪些装了新版本，每一条都要用户自己点。
+    // 一次只改动一个依赖，失败不影响其余——比「一键全更新」更保守，也更好排查。
+    // 关闭时节点留在 DOM 里只切 data-open，进出都有过渡动画。
+    var UpdatesDrawer = function UpdatesDrawer(props) {
+      var open = props.open === true;
+      var state = props.state || {};
+      var bundles = props.bundles || [];
+      var results = props.results || {};
+      var updateBundle = props.onUpdate;
+      var hasCatalog = props.catalogUpdated !== null && props.catalogUpdated !== undefined;
+      var subtitle = (props.count || 0) > 0
+        ? t("updates.subtitle", { installed: props.installedCount || 0, count: props.count || 0 })
+        : t("updates.subtitleEmpty", { installed: props.installedCount || 0 });
+
+      function body() {
+        if (state.phase === "loading" && !state.data) {
+          return el("div", { className: "dshpm-drawerList" },
+            el("div", { className: "dshpm-drawerLoading" }, el(IconSpinner, { size: 12 }), el("span", null, t("updates.loading"))),
+            el("div", { className: "dshpm-updateRow dshpm-updateRow--ghost" }),
+            el("div", { className: "dshpm-updateRow dshpm-updateRow--ghost" }));
+        }
+        if (state.phase === "error" && !state.data) {
+          var failure = errorCopy(state.error);
+          return el(EmptyState, {
+            title: t("updates.failed.title"),
+            body: t("updates.failed.body", { reason: failure.message || failure.title }),
+            actionLabel: t("action.retry"),
+            onAction: props.onReload
+          });
+        }
+        // 顺序很关键：有可更新条目就直接列出来——「有没有新版本」是 /installed 自己带回来的
+        // （宿主把目录 join 进去了），不需要目录页的数据也加载完。只有在**列表为空**时才需要
+        // 区分「真的都最新」和「目录根本没读到，所以判断不了」。
+        if (bundles.length === 0 && !hasCatalog) {
+          return el(EmptyState, {
+            title: t("updates.noCatalog.title"),
+            body: t("updates.noCatalog.body"),
+            actionLabel: t("action.refresh"),
+            onAction: props.onRefreshCatalog
+          });
+        }
+        if (bundles.length === 0) {
+          return el(EmptyState, {
+            title: t("updates.empty.title"),
+            body: t("updates.empty.body", { updated: props.catalogUpdated || "?" })
+          });
+        }
+        return el("div", { className: "dshpm-drawerList" }, bundles.map(function (bundle, index) {
+          var key = bundle.name;
+          var busy = props.busyKey === "install:" + key;
+          var result = results[key] || null;
+          return el("div", {
+            key: key,
+            className: "dshpm-updateRow",
+            "data-busy": busy ? "true" : "false",
+            "data-done": result && result.ok ? "true" : "false",
+            style: { animationDelay: Math.min(index, 12) * 24 + "ms" }
+          },
+            el("div", { className: "dshpm-updateMain" },
+              el("div", { className: "dshpm-updateName" }, bundle.name),
+              el("div", { className: "dshpm-updateVersions" },
+                el("span", { className: "dshpm-versionFrom" }, "v" + (bundle.version || "?")),
+                el("span", { className: "dshpm-versionArrow", "aria-hidden": "true" }, "→"),
+                el("span", { className: "dshpm-versionTo" }, "v" + (bundle.latest || "?"))),
+              bundle.description ? el("div", { className: "dshpm-updateDesc" }, descriptionText(bundle.description)) : null,
+              result
+                ? el("div", { className: "dshpm-updateResult", "data-ok": result.ok ? "true" : "false" },
+                  result.ok ? el(IconCheck, { size: 12 }) : el(IconAlert, { size: 12 }),
+                  el("span", null, result.text))
+                : null),
+            el("div", { className: "dshpm-updateActions" },
+              el("button", {
+                type: "button",
+                className: "dshpm-btn dshpm-btn--primary",
+                disabled: busy || props.readOnly,
+                "aria-busy": busy ? "true" : "false",
+                title: props.readOnly ? t("readonly.body") : t("action.update", { version: bundle.latest }),
+                onClick: function () { updateBundle(bundle); }
+              }, busy ? el(IconSpinner, { size: 12 }) : el(IconDownload, { size: 12 }),
+                busy ? t("action.updating") : t("action.update", { version: bundle.latest })))
+          );
+        }));
+      }
+
+      return el("section", {
+        className: "dshpm-updatesPanel",
+        "data-open": open ? "true" : "false",
+        "aria-hidden": open ? "false" : "true",
+        "aria-label": t("updates.title")
+      },
+        el("div", { className: "dshpm-drawerHead" },
+          el("span", { className: "dshpm-drawerIcon" }, el(IconLayers, { size: 15 })),
+          el("div", { className: "dshpm-drawerHeading" },
+            el("div", { className: "dshpm-drawerTitle" }, t("updates.title")),
+            el("div", { className: "dshpm-drawerSubtitle" }, subtitle)),
+          el("button", {
+            type: "button",
+            className: "dshpm-btn dshpm-btn--quiet dshpm-drawerClose",
+            "aria-label": t("action.hideDetails"),
+            onClick: props.onClose
+          }, el(IconClose, { size: 13 }))),
+        el("div", { className: "dshpm-drawerHint" }, t("updates.hint")),
+        el("div", { className: "dshpm-drawerBody" }, body()),
+        el("div", { className: "dshpm-drawerFoot" },
+          el("button", {
+            type: "button",
+            className: "dshpm-btn",
+            disabled: state.phase === "loading",
+            onClick: props.onReload
+          }, state.phase === "loading" ? el(IconSpinner, { size: 12 }) : el(IconRefresh, { size: 12 }),
+            t("action.recheckSelf"))));
+    };
 
     // ───────────────────────────── 市场主面板 ─────────────────────────────
     function MarketPage() {
@@ -1671,6 +2076,23 @@ window.__ModuleLoader__.load({
       var copiedState = React.useState(null);
       var copied = copiedState[0];
       var setCopied = copiedState[1];
+
+      // 市场自身更新的状态机：idle → checking → ready（可能 updateAvailable）→ installing → ready
+      var selfState = React.useState({ phase: "idle", data: null, error: null });
+      var selfUpdate = selfState[0];
+      var setSelfUpdate = selfState[1];
+
+      var drawerState = React.useState(false);
+      var drawerOpen = drawerState[0];
+      var setDrawerOpen = drawerState[1];
+
+      // 抽屉里每一条的更新结果，按包名记：进度与成功/失败都留在原地，不用去翻提示条。
+      var updateResultsState = React.useState({});
+      var updateResults = updateResultsState[0];
+      var setUpdateResults = updateResultsState[1];
+
+      /** 「发现 N 个可更新」每次挂载只提示一次，别在每次重读列表时重复弹。 */
+      var announcedRef = React.useRef(false);
 
       var mountedRef = React.useRef(true);
       var registryRef = React.useRef({});
@@ -1778,6 +2200,11 @@ window.__ModuleLoader__.load({
         api.installed(bag.signal).then(function (payload) {
           if (!isCurrent("installed", bag.token)) return;
           setInstalled({ phase: "ready", data: payload, error: null });
+          var count = publishUpdateCount(payload && payload.bundles);
+          if (count > 0 && !announcedRef.current) {
+            announcedRef.current = true;
+            setNotice({ kind: "info", text: t("notice.updatesFound", { count: count }) });
+          }
         }).catch(function (error) {
           if (error && error.aborted) return;
           if (!isCurrent("installed", bag.token)) return;
@@ -1800,13 +2227,25 @@ window.__ModuleLoader__.load({
         };
       }, [tab, query, category, sort, page, tick]);
 
+      // 成功/信息类提示自己收起（下面的进度线走完就是它消失的时刻）；
+      // 警告与错误留着——它们要求用户先做决定。
       React.useEffect(function () {
-        if (tab !== "installed") return undefined;
+        if (!notice || (notice.kind !== "success" && notice.kind !== "info")) return undefined;
+        var timer = setTimeout(function () {
+          if (!mountedRef.current) return;
+          setNotice(function (current) { return current === notice ? null : current; });
+        }, NOTICE_DISMISS_MS);
+        return function () { clearTimeout(timer); };
+      }, [notice]);
+
+      // 已安装列表两个页签都要拉：头部「更新插件」的角标、抽屉列表，以及侧边栏入口的
+      // 角标都靠它；装完/更新后 bumpTick 也要重读一次。
+      React.useEffect(function () {
         loadInstalled();
         return function () {
           abortKey("installed");
         };
-      }, [tab, tick]);
+      }, [tick]);
 
       function bumpTick() {
         setTick(function (n) { return n + 1; });
@@ -1850,12 +2289,16 @@ window.__ModuleLoader__.load({
         setPage(1);
       }
 
-      function submitInstall(target, approvedBuilds) {
+      function submitInstall(target, approvedBuilds, onDone) {
         var requestName = target.name;
         var label = target.label || target.name;
         var key = target.key || requestName;
         // 安装与更新走同一个接口，作业键统一用 install: 前缀，卡片与已安装行才能共享“进行中”状态。
         var jobKey = "install:" + key;
+        // 抽屉里的每一条都要把自己的结果留在原地：onDone 是可选的，卡片/已安装行不需要它。
+        var report = function (outcome) {
+          if (typeof onDone === "function") onDone(outcome);
+        };
         startJob({ key: jobKey, kind: target.kind || "install" });
         var body = { name: requestName, requestId: newRequestId() };
         if (target.spec) body.spec = target.spec;
@@ -1865,21 +2308,28 @@ window.__ModuleLoader__.load({
           clearJob();
           if (payload.pendingBuilds && payload.pendingBuilds.length) {
             if (approvedBuilds && approvedBuilds.length) {
+              var stillText = t("notice.buildsStillPending", { builds: payload.pendingBuilds.join(", ") });
               setPending(null);
-              setNotice({ kind: "warn", text: t("notice.buildsStillPending", { builds: payload.pendingBuilds.join(", ") }) });
+              setNotice({ kind: "warn", text: stillText });
+              report({ ok: false, text: stillText });
             } else {
+              var pendingText = t("notice.buildsPending", { name: label });
               setPending({ name: requestName, label: label, spec: target.spec, kind: target.kind || "install", key: key, builds: payload.pendingBuilds });
-              setNotice({ kind: "warn", text: t("notice.buildsPending", { name: label }) });
+              setNotice({ kind: "warn", text: pendingText });
+              report({ ok: false, text: pendingText });
             }
             return;
           }
           setPending(null);
-          setNotice(noticeFromResult(payload, "install", label));
+          var outcome = noticeFromResult(payload, "install", label);
+          setNotice(outcome);
+          report({ ok: outcome.kind === "success", text: outcome.text });
           bumpTick();
         }).catch(function (error) {
           if (!mountedRef.current) return;
           clearJob();
           setNotice({ kind: "error", error: error });
+          report({ ok: false, text: error && error.message ? String(error.message) : t("updates.failed", { name: label }) });
         });
       }
 
@@ -1893,8 +2343,17 @@ window.__ModuleLoader__.load({
         }, null);
       }
 
+      /** 抽屉里点「更新到 x.y.z」：走同一条安装接口，把结果记回该条。 */
       function updateBundle(bundle) {
-        submitInstall({ name: bundle.name, label: bundle.name, spec: bundle.name, kind: "update", key: bundle.name }, null);
+        submitInstall({ name: bundle.name, label: bundle.name, spec: bundle.name, kind: "update", key: bundle.name }, null, function (outcome) {
+          setUpdateResults(function (previous) {
+            var next = {};
+            var keys = Object.keys(previous);
+            for (var i = 0; i < keys.length; i++) next[keys[i]] = previous[keys[i]];
+            next[bundle.name] = outcome;
+            return next;
+          });
+        });
       }
 
       function approvePending() {
@@ -1976,6 +2435,58 @@ window.__ModuleLoader__.load({
         });
       }
 
+      /**
+       * 「检查市场更新」：只打一次 /self-update（宿主侧有 10 分钟缓存，连点不会打爆 CDN），
+       * 结果同时进按钮文案与提示条。
+       */
+      function checkSelfUpdate() {
+        if (selfUpdate.phase === "checking" || selfUpdate.phase === "installing") return;
+        setSelfUpdate({ phase: "checking", data: selfUpdate.data, error: null });
+        api.selfUpdate(false).then(function (payload) {
+          if (!mountedRef.current) return;
+          var info = payload && payload.selfUpdate ? payload.selfUpdate : {};
+          setSelfUpdate({ phase: "ready", data: info, error: null });
+          setNotice(info.updateAvailable
+            ? { kind: "info", text: t("notice.selfFound", { version: info.latest }) }
+            : { kind: "success", text: t("notice.selfCurrent", { version: info.latest }) });
+        }).catch(function (error) {
+          if (!mountedRef.current) return;
+          setSelfUpdate({ phase: "error", data: null, error: error });
+          setNotice({ kind: "error", error: error });
+        });
+      }
+
+      /** 「更新到 x.y.z」：下载 → 三道校验 → 交给宿主安装。宿主半要重启 DSH 才会换代码。 */
+      function applySelfUpdate() {
+        if (selfUpdate.phase === "installing") return;
+        var target = selfUpdate.data && selfUpdate.data.latest ? selfUpdate.data.latest : "";
+        startJob({ key: "self-update", kind: "self-update" });
+        setSelfUpdate({ phase: "installing", data: selfUpdate.data, error: null });
+        api.applySelfUpdate().then(function (payload) {
+          if (!mountedRef.current) return;
+          clearJob();
+          var to = payload && payload.to ? payload.to : null;
+          // 装完本地版本已经变了：按钮回到「检查更新」，重启前不谎称已生效。
+          setSelfUpdate({ phase: "ready", data: null, error: null });
+          setNotice({ kind: "success", text: to ? t("notice.selfUpdated", { version: to }) : t("notice.selfCurrent", { version: target }) });
+        }).catch(function (error) {
+          if (!mountedRef.current) return;
+          clearJob();
+          setSelfUpdate({ phase: "error", data: null, error: error });
+          setNotice({ kind: "error", error: error });
+        });
+      }
+
+      /** 打开抽屉时重读一次已安装列表：角标与列表都基于新数据。 */
+      function openUpdates() {
+        setDrawerOpen(true);
+        loadInstalled();
+      }
+
+      function closeUpdates() {
+        setDrawerOpen(false);
+      }
+
       function toggleDetails(key) {
         setExpanded(function (previous) {
           var next = {};
@@ -2036,15 +2547,71 @@ window.__ModuleLoader__.load({
       var refreshing = !!job && job.kind === "refresh";
       var busyKey = job ? job.key : null;
 
-      return el("div", { className: "dshpm-root" },
+      // ── 头部两个按钮与抽屉要用的派生值 ──
+      var installedPayload = installed.data || {};
+      var allBundles = installedPayload.bundles || [];
+      var updateBundles = [];
+      for (var bundleIndex = 0; bundleIndex < allBundles.length; bundleIndex++) {
+        var candidate = allBundles[bundleIndex];
+        if (candidate && candidate.updateAvailable === true && candidate.latest) updateBundles.push(candidate);
+      }
+      var updateCount = updateBundles.length;
+      var selfPhase = selfUpdate.phase;
+      var selfInfo = selfUpdate.data || null;
+      var selfAvailable = !!(selfInfo && selfInfo.updateAvailable === true);
+      var selfLabel = selfPhase === "checking" ? t("action.checkingSelf")
+        : selfPhase === "installing" ? t("action.updatingSelf")
+          : selfAvailable ? t("action.updateSelf", { version: selfInfo.latest })
+            : selfPhase === "ready" ? t("action.selfCurrent")
+              : selfPhase === "error" ? t("action.recheckSelf")
+                : t("action.checkSelf");
+      var selfTitle = selfAvailable
+        ? t("self.available", { version: selfInfo.latest })
+        : selfPhase === "ready"
+          ? t("notice.selfCurrent", { version: selfInfo && selfInfo.latest ? selfInfo.latest : version })
+          : t("action.checkSelf");
+      var selfBusy = selfPhase === "checking" || selfPhase === "installing";
+      return el("div", {
+        className: "dshpm-root",
+        "data-busy": job ? "true" : "false",
+        "data-drawer": drawerOpen ? "true" : "false"
+      },
+        // 任何操作进行中都在顶部走一条不确定性进度条：安装/卸载/刷新/自更新共用。
+        job ? el("div", { className: "dshpm-progress", "aria-hidden": "true" }) : null,
         el("div", { className: "dshpm-header" },
           el("div", { className: "dshpm-headerMain" },
             el("h2", { className: "dshpm-title" }, t("market.title")),
             el("div", { className: "dshpm-subtitle" },
               t("market.subtitle"),
               version ? " · " + t("market.version", { version: version }) : "",
-              metaText ? " · " + metaText : "")),
+              metaText ? " · " + metaText : ""),
+            // 自更新会把本机 link: 依赖换成下载下来的包，动手前先把这件事说出来。
+            selfAvailable
+              ? el("div", { className: "dshpm-selfNote" }, el(IconInfo, { size: 12 }), el("span", null, t("self.linkNote")))
+              : null),
           el("div", { className: "dshpm-headerActions" },
+            el("button", {
+              type: "button",
+              className: "dshpm-btn dshpm-btn--updates" + (updateCount > 0 ? " dshpm-btn--attention" : ""),
+              "aria-haspopup": "dialog",
+              "aria-expanded": drawerOpen ? "true" : "false",
+              "data-open": drawerOpen ? "true" : "false",
+              title: t("updates.title"),
+              onClick: function () { if (drawerOpen) closeUpdates(); else openUpdates(); }
+            }, el(IconDownload, { size: 13 }), el("span", null, t("action.updates")),
+              updateCount > 0 ? el("span", { className: "dshpm-count", "data-pop": "true" }, String(updateCount)) : null),
+            el("button", {
+              type: "button",
+              className: "dshpm-btn" + (selfAvailable ? " dshpm-btn--primary dshpm-btn--pulse" : ""),
+              disabled: selfBusy,
+              "aria-busy": selfBusy ? "true" : "false",
+              "data-state": selfAvailable ? "available" : selfPhase,
+              title: selfTitle,
+              onClick: selfAvailable ? applySelfUpdate : checkSelfUpdate
+            }, selfBusy ? el(IconSpinner, { size: 12 })
+              : selfAvailable ? el(IconUpgrade, { size: 13 })
+                : selfPhase === "ready" ? el(IconCheck, { size: 13 }) : el(IconUpgrade, { size: 13 }),
+              selfLabel),
             el("button", {
               type: "button",
               className: "dshpm-btn",
@@ -2054,7 +2621,7 @@ window.__ModuleLoader__.load({
             }, refreshing ? el(IconSpinner, { size: 12 }) : el(IconRefresh, { size: 12 }),
               refreshing ? t("action.refreshing") : t("action.refresh")))
         ),
-        notice ? el(NoticeBar, { notice: notice, onDismiss: function () { setNotice(null); } }) : null,
+        notice ? el(NoticeBar, { notice: withAutoDismiss(notice), onDismiss: function () { setNotice(null); } }) : null,
         pending
           ? el(Banner, {
             kind: "warn",
@@ -2130,7 +2697,22 @@ window.__ModuleLoader__.load({
             onToggleDetails: toggleDetails,
             onToggleEntry: toggleEntry,
             onRetry: function () { bumpTick(); }
-          })
+          }),
+        el(UpdatesDrawer, {
+          open: drawerOpen,
+          state: installed,
+          bundles: updateBundles,
+          count: updateCount,
+          installedCount: allBundles.length,
+          catalogUpdated: catalogMeta && catalogMeta.updated ? catalogMeta.updated : null,
+          results: updateResults,
+          busyKey: busyKey,
+          readOnly: readOnly,
+          onUpdate: updateBundle,
+          onClose: closeUpdates,
+          onReload: function () { loadInstalled(); },
+          onRefreshCatalog: refreshCatalog
+        })
       );
     }
 

@@ -1,0 +1,469 @@
+/**
+ * 市场自身的更新通道。
+ *
+ * 为什么是 jsDelivr 而不是 GitHub Release：
+ * 本机直连 github.com 会被重置、api.github.com 的每个真实路径都返回 403（GFW 拦截），
+ * 走通需要 Clash 代理，而宿主进程只认 HTTP(S)_PROXY 环境变量、桌面版通常不带；
+ * GitHub Release 附件也没有任何国内镜像能稳定代理。jsDelivr 直连可用（实测 85–2100ms，
+ * 冷启动后走 CDN 缓存），代价是**只能取仓库里的文件**，所以发布产物由 release.ps1
+ * 提交进 `releases/`（见 docs/RELEASING.md §4.4）。
+ *
+ * 信任链（三道，缺一不可）：
+ *   1. 路径形状：tarball 必须落在 `releases/*.tgz`，且拼在固定 CDN 前缀之后——
+ *      index.json 里写别的 URL 不会被采信；
+ *   2. sha256：与 index.json 记的哈希逐字节比对（防截断/损坏/中间人换包）；
+ *   3. 产物自证：解开 tarball 读 package/package.json，名字与版本必须与预期一致。
+ * 说明：第 2 道不防「CDN 与 index.json 一起被换」，那需要独立签名密钥；
+ * 现在的定位是「防损坏与防单点替换」，写进 docs/API-CONTRACT.md §7 如实标注。
+ */
+
+import { Buffer } from 'node:buffer'
+import { createHash, timingSafeEqual } from 'node:crypto'
+import { mkdir, rename, writeFile } from 'node:fs/promises'
+import { homedir } from 'node:os'
+import { join } from 'node:path'
+
+import { fileFromTarball, timeoutSignal } from './catalog-npm.js'
+
+/** 固定仓库与通道地址：换仓库要改的是这里与 docs/RELEASING.md。 */
+export const MARKET_REPO = 'Winnie-0721/dsh-plugin-market'
+export const MARKET_PACKAGE = 'dsh-plugin-market'
+export const CDN_BASE = `https://cdn.jsdelivr.net/gh/${MARKET_REPO}`
+export const DATA_API = `https://data.jsdelivr.com/v1/packages/gh/${MARKET_REPO}`
+export const GITHUB_RELEASE_API = `https://api.github.com/repos/${MARKET_REPO}/releases/latest`
+
+/** 检查结果缓存 10 分钟：Data API 冷启动要 2s 级，点一次按钮不该每次都等它。 */
+export const CHECK_CACHE_MS = 10 * 60 * 1000
+export const METADATA_TIMEOUT_MS = 12_000
+export const TARBALL_TIMEOUT_MS = 30_000
+
+/** 下载目录：用户主目录下，重启后仍在——安装后 profile 记的是这个路径的 file: 依赖。 */
+export function defaultDownloadDir() {
+  return join(homedir(), '.dsh', 'plugin-market', 'downloads')
+}
+
+// ── 版本比较（严格 MAJOR.MINOR.PATCH，与发布规则一致） ──────────────────────
+
+/**
+ * 解析版本号；`v1.2.3` 也接受（Git 标签形如 v1.2.3）。
+ * 不是严格三段数字就返回 null——预发布号不参与本通道的比较，宁可拒绝也不猜。
+ */
+export function parseVersion(value) {
+  if (typeof value !== 'string') return null
+  const match = /^v?(\d+)\.(\d+)\.(\d+)$/.exec(value.trim())
+  if (match === null) return null
+  const parts = [Number(match[1]), Number(match[2]), Number(match[3])]
+  if (parts.some((part) => !Number.isSafeInteger(part))) return null
+  return { major: parts[0], minor: parts[1], patch: parts[2] }
+}
+
+/** 比较两个版本串：a>b 返回 1，相等 0，a<b 返回 -1；任一不可解析返回 null。 */
+export function compareVersions(a, b) {
+  const left = parseVersion(a)
+  const right = parseVersion(b)
+  if (left === null || right === null) return null
+  for (const key of ['major', 'minor', 'patch']) {
+    if (left[key] !== right[key]) return left[key] > right[key] ? 1 : -1
+  }
+  return 0
+}
+
+/** 只在候选严格高于当前时才算「有更新」：相同或更低都不提示。 */
+export function isNewer(candidate, current) {
+  return compareVersions(candidate, current) === 1
+}
+
+/** 从版本串列表里取最高的一个；全部不可解析时返回 null。 */
+export function pickLatestVersion(candidates) {
+  let best = null
+  for (const candidate of Array.isArray(candidates) ? candidates : []) {
+    if (parseVersion(candidate) === null) continue
+    if (best === null || compareVersions(candidate, best) === 1) best = String(candidate).trim().replace(/^v/, '')
+  }
+  return best
+}
+
+// ── index.json 的读取与校验（持久/网络边界，按结构校验） ────────────────────
+
+/** `releases/<name>.tgz`，别的形状一律不采信。 */
+export function isReleaseTarballPath(value) {
+  return typeof value === 'string' && /^releases\/[A-Za-z0-9._-]+\.tgz$/.test(value)
+}
+
+/** sha256 十六进制串。 */
+export function isSha256Hex(value) {
+  return typeof value === 'string' && /^[0-9a-f]{64}$/.test(value)
+}
+
+/** 把一个 index.json 条目收敛成安装需要的字段；缺关键字段返回 null。 */
+export function normalizeEntry(raw) {
+  if (raw === null || typeof raw !== 'object') return null
+  const version = parseVersion(raw.version)
+  if (version === null) return null
+  const tarball = isReleaseTarballPath(raw.tarball) ? raw.tarball : null
+  return {
+    version: String(raw.version).trim().replace(/^v/, ''),
+    tag: typeof raw.tag === 'string' && /^v?\S+$/.test(raw.tag) ? raw.tag : `v${String(raw.version).trim().replace(/^v/, '')}`,
+    versionCode: Number.isSafeInteger(raw.versionCode) ? raw.versionCode : null,
+    build: typeof raw.build === 'string' ? raw.build : null,
+    tarball,
+    sha256: isSha256Hex(raw.sha256) ? raw.sha256 : null,
+    bytes: Number.isSafeInteger(raw.bytes) && raw.bytes > 0 ? raw.bytes : null,
+    releasedAt: typeof raw.releasedAt === 'string' ? raw.releasedAt : null
+  }
+}
+
+/**
+ * 读一份 index.json：返回 `{ latest, versions }`，用不上的一律丢弃而不是猜。
+ * 结构不认识时返回 null，让调用方把该源记为失败。
+ */
+export function readIndex(raw) {
+  if (raw === null || typeof raw !== 'object') return null
+  const versions = []
+  for (const item of Array.isArray(raw.versions) ? raw.versions : []) {
+    const entry = normalizeEntry(item)
+    if (entry !== null) versions.push(entry)
+  }
+  let latest = normalizeEntry(raw.latest)
+  if (latest === null) {
+    const best = pickLatestVersion(versions.map((entry) => entry.version))
+    latest = best === null ? null : versions.find((entry) => entry.version === best) ?? null
+  }
+  if (latest === null && versions.length === 0) return null
+  return { latest, versions }
+}
+
+/** 校验下载到的字节与 index.json 记的哈希、长度是否一致。 */
+export function verifySha256Hex(bytes, expectedHex) {
+  if (!isSha256Hex(expectedHex)) return { ok: false, reason: 'index.json 没有可用的 sha256，拒绝安装未校验的产物' }
+  const actual = createHash('sha256').update(bytes).digest()
+  const expected = Buffer.from(expectedHex, 'hex')
+  if (actual.length !== expected.length) return { ok: false, reason: 'sha256 长度不符' }
+  return timingSafeEqual(actual, expected) ? { ok: true } : { ok: false, reason: 'sha256 与 index.json 不符' }
+}
+
+/**
+ * 产物自证：tarball 里的 package/package.json 必须声明预期的包名与版本。
+ * 这一道挡住「哈希可信但内容根本不是本插件」的情况。
+ */
+export function readArtifactManifest(bytes) {
+  let raw
+  try {
+    const file = fileFromTarball(bytes, 'package/package.json')
+    if (file === null) return { ok: false, reason: 'tarball 里没有 package/package.json' }
+    raw = JSON.parse(file.toString('utf8'))
+  } catch (error) {
+    return { ok: false, reason: `读取产物清单失败：${error?.message ?? error}` }
+  }
+  if (raw === null || typeof raw !== 'object') return { ok: false, reason: '产物清单不是 JSON 对象' }
+  return { ok: true, name: typeof raw.name === 'string' ? raw.name : null, version: typeof raw.version === 'string' ? raw.version : null }
+}
+
+// ── IO ─────────────────────────────────────────────────────────────────────
+
+function shortError(error) {
+  if (error === null || error === undefined) return '未知错误'
+  const message = typeof error.message === 'string' && error.message !== '' ? error.message : String(error)
+  return message.length > 120 ? `${message.slice(0, 120)}…` : message
+}
+
+function classify(error, timeoutMs) {
+  const code = typeof error?.code === 'string' ? error.code : ''
+  const timedOut =
+    error?.name === 'TimeoutError' ||
+    error?.name === 'AbortError' ||
+    code === 'UND_ERR_CONNECT_TIMEOUT' ||
+    code === 'UND_ERR_HEADERS_TIMEOUT' ||
+    code === 'UND_ERR_BODY_TIMEOUT'
+  return timedOut ? `超时（${Math.round(timeoutMs / 1000)}s）` : `请求失败：${shortError(error)}`
+}
+
+async function getJson(fetchImpl, url, timeoutMs) {
+  let response
+  try {
+    response = await fetchImpl(url, {
+      method: 'GET',
+      redirect: 'follow',
+      credentials: 'omit',
+      headers: { accept: 'application/json' },
+      signal: timeoutSignal(timeoutMs)
+    })
+  } catch (error) {
+    return { ok: false, reason: classify(error, timeoutMs) }
+  }
+  if (response === null || typeof response !== 'object' || typeof response.ok !== 'boolean') {
+    return { ok: false, reason: '响应无法识别' }
+  }
+  if (response.ok !== true) return { ok: false, reason: `HTTP ${response.status}` }
+  try {
+    return { ok: true, raw: JSON.parse(await response.text()) }
+  } catch (error) {
+    return { ok: false, reason: `不是合法 JSON：${shortError(error)}` }
+  }
+}
+
+async function getBytes(fetchImpl, url, timeoutMs) {
+  let response
+  try {
+    response = await fetchImpl(url, {
+      method: 'GET',
+      redirect: 'follow',
+      credentials: 'omit',
+      headers: { accept: 'application/octet-stream' },
+      signal: timeoutSignal(timeoutMs)
+    })
+  } catch (error) {
+    return { ok: false, reason: classify(error, timeoutMs) }
+  }
+  if (response === null || typeof response !== 'object' || typeof response.ok !== 'boolean') {
+    return { ok: false, reason: '响应无法识别' }
+  }
+  if (response.ok !== true) return { ok: false, reason: `HTTP ${response.status}` }
+  try {
+    if (typeof response.arrayBuffer !== 'function') return { ok: false, reason: '响应不支持二进制读取' }
+    const raw = await response.arrayBuffer()
+    return { ok: true, bytes: Buffer.isBuffer(raw) ? raw : Buffer.from(raw) }
+  } catch (error) {
+    return { ok: false, reason: classify(error, timeoutMs) }
+  }
+}
+
+/** 三个候选源，按「本机实测可达性」排序；每个都如实记录自己为什么失败。 */
+function buildSources() {
+  return [
+    {
+      id: 'jsdelivr-tags',
+      label: `jsDelivr Data API（${MARKET_REPO} 标签列表）`,
+      async read(fetchImpl) {
+        const res = await getJson(fetchImpl, DATA_API, METADATA_TIMEOUT_MS)
+        if (res.ok !== true) return res
+        const versions = (Array.isArray(res.raw?.versions) ? res.raw.versions : [])
+          .map((item) => item?.version)
+          .filter((value) => typeof value === 'string')
+        const latest = pickLatestVersion(versions)
+        if (latest === null) return { ok: false, reason: '标签列表里没有可解析的 MAJOR.MINOR.PATCH 版本' }
+        return { ok: true, version: latest, tag: `v${latest}`, entryFromTag: true }
+      }
+    },
+    {
+      id: 'jsdelivr-index',
+      label: `jsDelivr CDN（main 分支 releases/index.json）`,
+      async read(fetchImpl) {
+        const res = await getJson(fetchImpl, `${CDN_BASE}@main/releases/index.json`, METADATA_TIMEOUT_MS)
+        if (res.ok !== true) return res
+        const index = readIndex(res.raw)
+        if (index === null || index.latest === null) return { ok: false, reason: 'index.json 里没有可用版本' }
+        // 分支引用在 CDN 上是缓存 12 小时的：这条路的版本号可能滞后，
+        // 所以只当它自己给出条目时使用，且排在标签列表之后。
+        return { ok: true, version: index.latest.version, tag: index.latest.tag, entry: index.latest, entryFromTag: false }
+      }
+    },
+    {
+      id: 'github-release',
+      label: 'GitHub Releases API',
+      async read(fetchImpl) {
+        const res = await getJson(fetchImpl, GITHUB_RELEASE_API, METADATA_TIMEOUT_MS)
+        if (res.ok !== true) return res
+        const tag = typeof res.raw?.tag_name === 'string' ? res.raw.tag_name : ''
+        const version = parseVersion(tag)
+        if (version === null) return { ok: false, reason: 'Release 的 tag_name 不是可解析的版本号' }
+        return { ok: true, version: tag.trim().replace(/^v/, ''), tag, entryFromTag: true }
+      }
+    }
+  ]
+}
+
+/**
+ * 建一个市场自更新器。
+ *
+ * @param options.fetchImpl - 注入用的 fetch（测试传假实现）。
+ * @param options.installBundle - 宿主 pluginManager.installBundle，缺失时更新不可用。
+ * @param options.downloadDir - tarball 落盘目录，默认 ~/.dsh/plugin-market/downloads。
+ * @param options.logger - 诊断输出，默认 console。
+ */
+export function createSelfUpdater(options = {}) {
+  const fetchImpl = typeof options.fetchImpl === 'function' ? options.fetchImpl : globalThis.fetch
+  // 宿主服务可能比插件 apply 晚注册：优先用 getter，每次调用时再读一次。
+  const managerOf = typeof options.managerOf === 'function' ? options.managerOf : () => options.manager ?? null
+  const downloadDir = typeof options.downloadDir === 'string' && options.downloadDir !== '' ? options.downloadDir : defaultDownloadDir()
+  const logger = options.logger ?? console
+  const cacheMs = Number.isFinite(options.cacheMs) ? options.cacheMs : CHECK_CACHE_MS
+  let cache = null
+
+  /** 该标签下这一版的条目：标签内容不可变，所以取回后可以放心缓存。 */
+  async function entryForTag(fetchImplTag, tag, expectedVersion, fallback) {
+    const res = await getJson(fetchImplTag, `${CDN_BASE}@${encodeURIComponent(tag)}/releases/index.json`, METADATA_TIMEOUT_MS)
+    if (res.ok === true) {
+      const index = readIndex(res.raw)
+      if (index !== null) {
+        const hit = (index.versions ?? []).find((entry) => entry.version === expectedVersion) ?? null
+        if (hit !== null) return { ok: true, entry: hit }
+        if (index.latest !== null && index.latest.version === expectedVersion) return { ok: true, entry: index.latest }
+      }
+    }
+    // 老标签（v1.0.x）还没有 releases/ 目录：退回 main 分支那份条目，至少能装。
+    if (fallback !== undefined && fallback !== null) return { ok: true, entry: fallback }
+    return { ok: false, reason: res.ok === true ? `标签 ${tag} 的 index.json 里没有 ${expectedVersion}` : `标签 ${tag}：${res.reason}` }
+  }
+
+  async function check(checkOptions = {}) {
+    const force = checkOptions.force === true
+    const now = Date.now()
+    if (!force && cache !== null && now - cache.at < cacheMs) return cache.value
+
+    // 当前版本：调用方没给就用创建时注入的（宿主侧是 package.json 里的版本）。
+    const current = typeof checkOptions.current === 'string'
+      ? checkOptions.current
+      : typeof options.current === 'string' ? options.current : null
+    if (typeof fetchImpl !== 'function') {
+      return { ok: false, code: 'self-update-unavailable', message: '当前运行环境没有 fetch。', attempts: [] }
+    }
+
+    const attempts = []
+    let found = null
+    for (const source of buildSources()) {
+      const res = await source.read(fetchImpl)
+      if (res.ok === true) {
+        attempts.push({ id: source.id, label: source.label, ok: true, reason: `v${res.version}` })
+        found = { source, version: res.version, tag: res.tag, entry: res.entry ?? null }
+        break
+      }
+      attempts.push({ id: source.id, label: source.label, ok: false, reason: res.reason })
+    }
+
+    if (found === null) {
+      const detail = attempts.map((attempt) => `${attempt.label}：${attempt.reason}`).join('；')
+      logger.warn?.(`[${MARKET_PACKAGE}] 自更新检查失败：${detail === '' ? '没有可用源' : detail}`)
+      const value = {
+        ok: false,
+        code: 'self-update-unavailable',
+        message: '三个更新源都没能回答。',
+        hint: '这台机器可能访问不了 jsDelivr 与 GitHub；可在终端用 dsh plugin add 手动升级。',
+        attempts
+      }
+      cache = { at: now, value }
+      return value
+    }
+
+    const resolved = found.entry !== null
+      ? { ok: true, entry: found.entry }
+      : await entryForTag(fetchImpl, found.tag, found.version, null)
+    if (resolved.ok !== true) {
+      attempts.push({ id: `${found.source.id}:index`, label: `${found.tag} 的 releases/index.json`, ok: false, reason: resolved.reason })
+      const detail = attempts.map((attempt) => `${attempt.label}：${attempt.reason}`).join('；')
+      const value = {
+        ok: false,
+        code: 'self-update-unavailable',
+        message: `找到了最新版本 v${found.version}，但拿不到它的发布清单。`,
+        hint: '稍后重试；也可在终端用 dsh plugin add 按 Release 附件升级。',
+        attempts,
+        latest: found.version
+      }
+      logger.warn?.(`[${MARKET_PACKAGE}] 自更新清单不可用：${detail}`)
+      cache = { at: now, value }
+      return value
+    }
+
+    const entry = resolved.entry
+    const updateAvailable = current === null ? true : isNewer(entry.version, current)
+    const url = entry.tarball === null ? null : `${CDN_BASE}@${encodeURIComponent(entry.tag)}/${entry.tarball}`
+    const value = {
+      ok: true,
+      current,
+      latest: entry.version,
+      latestTag: entry.tag,
+      versionCode: entry.versionCode,
+      build: entry.build,
+      releasedAt: entry.releasedAt,
+      updateAvailable,
+      installable: updateAvailable && url !== null && entry.sha256 !== null,
+      channel: found.source.id,
+      url,
+      sha256: entry.sha256,
+      bytes: entry.bytes,
+      attempts,
+      checkedAt: new Date(now).toISOString()
+    }
+    cache = { at: now, value }
+    return value
+  }
+
+  /** 下载 + 三道校验 + 落盘；任何一道不过都返回失败，绝不把未校验的字节交给 pnpm。 */
+  async function download(entryUrl, entry) {
+    const res = await getBytes(fetchImpl, entryUrl, TARBALL_TIMEOUT_MS)
+    if (res.ok !== true) return { ok: false, code: 'self-update-download', message: `下载失败：${res.reason}` }
+    const bytes = res.bytes
+    if (entry.bytes !== null && bytes.length !== entry.bytes) {
+      return { ok: false, code: 'self-update-integrity', message: `字节数与清单不符（清单 ${entry.bytes}，实际 ${bytes.length}）。` }
+    }
+    const hash = verifySha256Hex(bytes, entry.sha256)
+    if (hash.ok !== true) return { ok: false, code: 'self-update-integrity', message: `完整性校验失败：${hash.reason}。` }
+    const manifest = readArtifactManifest(bytes)
+    if (manifest.ok !== true) return { ok: false, code: 'self-update-integrity', message: `产物不可读：${manifest.reason}。` }
+    if (manifest.name !== MARKET_PACKAGE || manifest.version !== entry.version) {
+      return {
+        ok: false,
+        code: 'self-update-integrity',
+        message: `产物自证不符：清单声明 ${manifest.name ?? '?'}@${manifest.version ?? '?'}，期望 ${MARKET_PACKAGE}@${entry.version}。`
+      }
+    }
+    await mkdir(downloadDir, { recursive: true })
+    const target = join(downloadDir, `${MARKET_PACKAGE}-${entry.version}.tgz`)
+    const partial = `${target}.part`
+    // 先写 .part 再改名：pnpm 永远不会读到写了一半的 tarball。
+    await writeFile(partial, bytes)
+    await rename(partial, target)
+    return { ok: true, path: target, bytes: bytes.length }
+  }
+
+  async function apply() {
+    const status = await check({ force: true })
+    if (status.ok !== true) return status
+    if (status.updateAvailable !== true) {
+      return { ok: true, application: 'up-to-date', current: status.current, latest: status.latest }
+    }
+    if (status.url === null || status.sha256 === null) {
+      return {
+        ok: false,
+        code: 'self-update-unavailable',
+        message: `v${status.latest} 这一版没有可校验的发布产物。`,
+        hint: '这一版可能只发了 Release 附件；在终端按 Release 页面的命令升级。'
+      }
+    }
+    const manager = managerOf()
+    if (manager === null || typeof manager.installBundle !== 'function') {
+      return { ok: false, code: 'manager-unavailable' }
+    }
+    const entry = { version: status.latest, tag: status.latestTag, sha256: status.sha256, bytes: status.bytes }
+    const downloaded = await download(status.url, entry)
+    if (downloaded.ok !== true) return downloaded
+
+    let result
+    try {
+      result = await manager.installBundle(downloaded.path, { enabled: true })
+    } catch (error) {
+      return { ok: false, code: 'install-failed', message: `宿主安装失败：${shortError(error)}` }
+    }
+    const value = result !== null && typeof result === 'object' ? result : {}
+    const failure = value.error ?? null
+    return {
+      ok: failure === null,
+      application: typeof value.application === 'string' ? value.application : failure === null ? 'applied' : 'failed',
+      from: status.current,
+      to: status.latest,
+      // 宿主半在进程里被 Loader 缓存：新代码要重启 DSH 才生效（见 docs/RELEASING.md §5）。
+      requiresRestart: true,
+      tarball: downloaded.path,
+      bytes: downloaded.bytes,
+      error: failure === null ? null : { code: typeof failure.code === 'string' ? failure.code : 'install-failed', message: typeof failure.message === 'string' ? failure.message : '' },
+      warnings: Array.isArray(value.warnings) ? value.warnings.filter((item) => typeof item === 'string') : []
+    }
+  }
+
+  /** 只给测试与诊断用：丢掉 10 分钟缓存。 */
+  function reset() {
+    cache = null
+  }
+
+  return { check, apply, reset }
+}

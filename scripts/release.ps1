@@ -181,11 +181,54 @@ if ($LocalOnly) {
   exit 0
 }
 
+# ── 3.5 写入 releases/：CDN 分发目录 ────────────────────────────────
+# 市场的「检查更新」从 jsDelivr 读这里，所以产物必须进**版本提交**、从而进标签：
+# jsDelivr 只能按标签/提交取仓库里的文件，取不到 GitHub Release 附件，而本机直连 github.com
+# 需要代理、镜像站又不可靠，CDN 是唯一稳定可达的通道（见 docs/RELEASING.md §4.4）。
+# index.json 给客户端两样东西：最新版本号，以及每个版本 tarball 的 sha256（下载后校验）。
+Step '3.5/5 写入 releases/（CDN 分发目录）'
+$releasesDir = Join-Path $root 'releases'
+New-Item -ItemType Directory -Force -Path $releasesDir | Out-Null
+$tgzName = Split-Path $tgz -Leaf
+$tgzTarget = Join-Path $releasesDir $tgzName
+Copy-Item $tgz $tgzTarget -Force
+$hash = (Get-FileHash $tgzTarget -Algorithm SHA256).Hash.ToLowerInvariant()
+$bytes = (Get-Item $tgzTarget).Length
+$indexPath = Join-Path $releasesDir 'index.json'
+if (Test-Path $indexPath) { $index = Get-Content $indexPath -Raw | ConvertFrom-Json } else { $index = $null }
+$entry = [ordered]@{
+  version     = $version
+  tag         = "v$version"
+  versionCode = $versionCode
+  build       = "+$commits.$sha"
+  tarball     = "releases/$tgzName"
+  sha256      = $hash
+  bytes       = [int]$bytes
+  releasedAt  = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+}
+$versions = @()
+if ($index -ne $null) { foreach ($v in @($index.versions)) { if ($v.version -ne $version) { $versions += $v } } }
+$versions += [pscustomobject]$entry
+# 降序保存：客户端只取 latest，顺序是给人看的。
+$versions = @($versions | Sort-Object -Property versionCode -Descending)
+$latest = $versions[0]
+$indexOut = [ordered]@{
+  name      = $manifest.name
+  channel   = 'jsdelivr'
+  repo      = 'Winnie-0721/dsh-plugin-market'
+  updatedAt = $entry.releasedAt
+  latest    = $latest
+  versions  = $versions
+}
+[System.IO.File]::WriteAllText($indexPath, ($indexOut | ConvertTo-Json -Depth 6), [System.Text.UTF8Encoding]::new($false))
+Ok "releases/$tgzName（$([math]::Round($bytes / 1KB)) KB，sha256 $($hash.Substring(0, 12))…）"
+Ok "releases/index.json：latest=$($latest.version)（共 $($versions.Count) 个版本）"
+
 # ── 4. 提交 + 标签 ──────────────────────────────────────────────────
 Step '4/5 提交并打标签'
 Push-Location $root
 try {
-  & git add plugin-market/package.json
+  & git add plugin-market/package.json releases
   $staged = @(& git diff --cached --name-only | Where-Object { $_ })
   if ($staged.Count -gt 0) {
     & git commit -q -m "chore(release): v$version"
@@ -204,11 +247,11 @@ try {
     # 版本号被重用（标签不在历史里）或打包内容被改（改了就得发新版本号）。
     & git merge-base --is-ancestor $tag HEAD
     if ($LASTEXITCODE -ne 0) { throw "标签 $tag 已存在且不在当前历史里，版本号不可重用" }
-    & git diff --quiet $tag HEAD -- plugin-market
+    & git diff --quiet $tag HEAD -- plugin-market releases
     if ($LASTEXITCODE -ne 0) {
-      throw "自 $tag 以来 plugin-market/ 有改动——发布内容变了就必须递增版本号（-Bump patch|minor|major），不能复用 $version"
+      throw "自 $tag 以来 plugin-market/ 或 releases/ 有改动——发布内容变了就必须递增版本号（-Bump patch|minor|major），不能复用 $version"
     }
-    Ok "标签 $tag 已在历史中且 plugin-market/ 未变，继续（可重入）"
+    Ok "标签 $tag 已在历史中且 plugin-market/、releases/ 未变，继续（可重入）"
   } else {
     & git tag -a $tag -m "v$version"
     if ($LASTEXITCODE -ne 0) { throw 'git tag 失败' }

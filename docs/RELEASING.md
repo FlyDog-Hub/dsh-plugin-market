@@ -20,6 +20,10 @@
 - 需要试用但仍未定稿时用预发布号 `1.1.0-rc.1` 这类形式，**不占用正式号段**；
 - 已经发布过的版本号**永不重用、永不覆盖**（npm 也不允许覆盖），出错就往上加 PATCH。
 
+举两个实际判例：样式生命周期修复（只改行为、不改契约）发 `1.0.1`、`1.0.2`（PATCH）；
+新增两个按钮 + `/self-update` 两个端点 + 自更新通道 + 一套动效，对用户是**新功能**，
+虽然没删任何旧东西，也发 `1.1.0`（MINOR）。
+
 为什么 `versionName` 保持严格 `MAJOR.MINOR.PATCH`、把构建信息放到别处：SemVer 规定构建元数据不参与优先级比较，
 而 Git 标签、npm 版本、`dsh plugin add` 的解析都吃这个字符串——把提交哈希塞进去只会制造歧义。
 
@@ -32,16 +36,20 @@
    - `node --check` 过 host/client 每个 `lib/*.js`；
    - `package.json` 可解析，且 `dsh.bundle.patch` / `dsh.client.platform` / `exports["./client"]` 齐全；
    - `cordis.patch.yml` 存在且行 `name` 与包名一致；
-   - 客户端 bundle 含 `__ModuleLoader__.load` 且 `id` 等于包名；
-   - `verify/origin-guard.test.mjs`（来源判定矩阵）通过；
+   - 客户端 bundle 含 `__ModuleLoader__.load` 且 `id` 等于包名，且不含 `eval` / `new Function`；
+   - `lib/` 里不存在**写死的旧版本号**（版本必须从包清单读；这条拦过一次真实的漂移）；
+   - `verify/*.test.mjs` 全部通过（含来源判定矩阵、样式生命周期、版本一致性、PS 脚本 BOM、自更新通道、文案与动效不变量）；
    - **发布面干净**：`plugin-market/`、`docs/`、`scripts/` 与根文件不能有未提交改动。
      其它路径（例如并行进行的 `verify/**` 验收脚本）有改动只警告、不阻塞——它们既不进发布物，
      也不进发布提交，把一场正在跑的验收当成发布阻塞没有意义。
 3. **递增**：按 `-Bump` 写入新的 `version`；
 4. **打包**：`pnpm pack` → `dist/dsh-plugin-market-<version>.tgz`，并写 `dist/version.json`
    （`version` / `versionCode` / 提交数 / 短哈希 / 构建时间）；
-5. **发布**：`git commit` + `git tag -a v<version>` + `git push --follow-tags` +
-   `gh release create v<version> dist/*.tgz`。
+5. **入 CDN 目录**：把 tarball 复制进 `releases/`，并更新 `releases/index.json`
+   （`latest` + 每版的 `versionCode` / `sha256` / `bytes` / `tarball`）——这两样必须进版本提交，
+   从而进标签，自更新按钮才取得到（§4.4）；
+6. **发布**：`git commit` + `git tag -a v<version>` + `git push --follow-tags` +
+   `gh release create v<version> dist/*.tgz dist/version.json`；标签/提交里已含 `releases/`。
 
 ## 3. 用法
 
@@ -110,23 +118,6 @@ dsh plugin --profile web add https://github.com/Winnie-0721/dsh-plugin-market/re
 `lib/index.js` 的 `PLUGIN_NAME`、README/文档里的安装命令，以及**已安装 profile 的重新安装**
 （`dsh plugin remove` 旧名 → `add` 新名）。改完用 `scripts/release.ps1 -Bump major` 发新版本号。
 
-## 5. 发布之后：改动什么时候生效
-
-两个半的更新机制不同，发布说明里必须讲清楚，否则用户会以为「装了新版却还是旧行为」：
-
-| 改动位置 | 生效方式 | 实测证据 |
-|---|---|---|
-| **客户端半**（`lib/client.js`） | 宿主按文件元数据算出新的产物 rev 并推给页面，**无需重启、通常也无需刷新** | 改完后线上 bundle 里能读到新代码（`mountStyles` / `style watchdog`），旧符号 `function installStyles` 已消失 |
-| **宿主半**（`lib/index.js` / `catalog*.js` / `http.js`） | 需要**重启 DSH 进程** | 加临时标记 → 用 patch 层 `disabled: true` 卸载再还原触发热重载 → 标记不出现、`/plugin-market/status` 的版本仍是旧值 |
-
-两个容易踩的点：
-
-- **patch 层的 disable/enable 热重载只重建 fiber，不重新导入 Node 模块**：它能证明「这一行被卸载/重新加回」（`/status` 会先 404 再 200），但拿到的是 Loader 缓存里的旧代码。不要用它来验证宿主半改动。
-- **Loader 的模块缓存按解析后的文件路径记账**，所以「把依赖从本地目录换成 tarball」也不一定换掉 URL；而 DSH 的配置 watcher **明确忽略只改依赖的清单变化**，只认 `dsh.profile.bundles` 列表变化（`packages/boot/hmr/tests/profile.spec.ts`）。
-- 另外：`dsh --profile <桌面 profile> --dump-config` 这类操作会被拒绝（`profile "desktop" is managed exclusively by the Electron application`），插件增删仍可走 CLI，但**组合的重载只能靠那个正在运行的宿主自己**。
-
-因此给用户的标准动作是：**改动宿主半 → 重启一次 DSH**；只改客户端半 → 等几秒即可。
-
 ### 4.3 真要发 npm 时的检查单
 
 ```powershell
@@ -136,6 +127,62 @@ pnpm publish --access public --no-git-checks
 ```
 
 - 发布前确认名字可用：`https://registry.npmjs.org/<name>` 返回 404；
-- `pnpm pack` 后的 tarball 只含 `package/` 下的 13 个文件（lib、assets、cordis.patch.yml、README×2、CHANGELOG、LICENSE、package.json）；
+- `pnpm pack` 后的 tarball 只含 `package/` 下的文件（lib、assets、cordis.patch.yml、README×2、CHANGELOG、LICENSE、package.json）；
 - 版本号不可重用、不可覆盖——发错了只能往上加；
 - 发布后立刻真装一次：`dsh plugin --profile <新 profile> add <name>` 或直接 `add <tarball URL>`，启动宿主确认侧边栏底部入口还在。
+
+### 4.4 CDN 自更新通道（市场里那个「检查市场更新」按钮走的路）
+
+按钮不是从 GitHub 读更新，而是走 **jsDelivr 的 CDN**。原因是实测出来的：
+
+| 通道 | 本机直连结果 | 结论 |
+|---|---|---|
+| `api.github.com` 真实路径 | 一律 `403`（GFW 拦截），`github.com` 直接重置连接 | 需要 Clash 代理；而宿主进程只认 `HTTP(S)_PROXY`，桌面版通常不带 |
+| GitHub Release 附件 | 无稳定国内镜像 | 不能作为应用内更新源 |
+| **jsDelivr**（`cdn.jsdelivr.net` / `data.jsdelivr.com`） | 直连可用（npm 路径 85–116ms，gh 路径冷启动约 2s 后走 CDN 缓存） | **选它** |
+
+jsDelivr 只能取**仓库里的文件**（取不到 Release 附件），所以 `scripts/release.ps1` 多了一步：
+
+1. 把 `pnpm pack` 出的 tarball 复制进仓库的 `releases/`；
+2. 生成/更新 `releases/index.json`（`latest` + 每个版本的 `versionCode` / `sha256` / `bytes` / `tarball`）；
+3. 两者随版本提交一起提交——**因此它们一定在标签里**，客户端按 `@v<version>` 取到的就是那一版的内容。
+
+自更新时的三道校验见 [API-CONTRACT §2.9](API-CONTRACT.md)：路径形状 → `sha256` → 产物自报的包名/版本。
+
+**两条硬约束**：
+
+- **仓库必须保持 public**。转成 private 之后 jsDelivr 会 404（它读不到私有仓库），按钮会直接变成「更新通道没有回应」。同时 private 也意味着别人根本装不上这个插件（Release 附件要鉴权）。
+- **同一个版本只能发一次**。标签内容不可变，jsDelivr 按标签永久缓存；改了代码就必须递增版本号（`release.ps1` 的可重入检查会拦住复用版本号）。
+
+发完自更新之后用户必须**重启 DSH**（见 §5），因为宿主半在进程里被 Loader 缓存。
+
+### 4.5 每次发版前跑一遍的三件事
+
+```powershell
+node verify/self-update.test.mjs        # 自更新通道的离线回归（含"拒绝路径不安装"）
+node verify/client-copy.test.mjs        # 文案键集与动效写法的不变量
+pwsh -File verify/ui-check.ps1          # 真实浏览器：起 scratch 宿主 + headless Edge，出截图
+```
+
+`verify/ui-check.ps1` 不进门禁：它要起一个宿主进程和一个浏览器，慢且依赖本机有 Edge；
+但它给出的是**假 DOM 桩给不了**的证据（真的渲染、真的计算样式、reduced-motion 下真的还在）。
+改动客户端半之后必须手动跑一次，截图落在 `verify/logs/ui/`。
+
+## 5. 发布之后：改动什么时候生效
+
+两个半的更新机制不同，发布说明里必须讲清楚，否则用户会以为「装了新版却还是旧行为」：
+
+| 改动位置 | 生效方式 | 实测证据 |
+|---|---|---|
+| **客户端半**（`lib/client.js`） | 宿主按文件元数据算出新的产物 rev 并推给页面，**无需重启、通常也无需刷新** | 改完后线上 bundle 里能读到新代码（`mountStyles` / `style watchdog`），旧符号 `function installStyles` 已消失 |
+| **宿主半**（`lib/index.js` / `catalog*.js` / `http.js` / `self-update.js`） | 需要**重启 DSH 进程** | 加临时标记 → 用 patch 层 `disabled: true` 卸载再还原触发热重载 → 标记不出现、`/plugin-market/status` 的版本仍是旧值 |
+| **自更新装下的新版本** | 同样是**重启 DSH**：装完 `requiresRestart: true`，客户端不谎称已生效 | `apply` 返回 `application: restart-required` + `from/to`；按钮回到「检查市场更新」而不是「已更新」 |
+
+三个容易踩的点：
+
+- **patch 层的 disable/enable 热重载只重建 fiber，不重新导入 Node 模块**：它能证明「这一行被卸载/重新加回」（`/status` 会先 404 再 200），但拿到的是 Loader 缓存里的旧代码。不要用它来验证宿主半改动。
+- **Loader 的模块缓存按解析后的文件路径记账**，所以「把依赖从本地目录换成 tarball」也不一定换掉 URL；而 DSH 的配置 watcher **明确忽略只改依赖的清单变化**，只认 `dsh.profile.bundles` 列表变化（`packages/boot/hmr/tests/profile.spec.ts`）。
+- **改了宿主半之后，验证要在「新起的进程」里做**：`verify/ui-check.ps1` / `verify/verify-market.ps1` 起的 scratch 宿主是新进程，天然加载仓库里当前的代码，所以不需要去动用户正在用的 desktop profile。
+- 另外：`dsh --profile <桌面 profile> --dump-config` 这类操作会被拒绝（`profile "desktop" is managed exclusively by the Electron application`），插件增删仍可走 CLI，但**组合的重载只能靠那个正在运行的宿主自己**。
+
+因此给用户的标准动作是：**改动宿主半 → 重启一次 DSH**；只改客户端半 → 等几秒即可。

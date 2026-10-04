@@ -54,12 +54,27 @@ the market page in the main column.
 - **One-click install** with a clear source, live progress, and an explicit result; when the plugin
   needs build scripts, the exact package names are shown before you approve
 - **Installed management**: enable / disable through the profile patch layer (live when it can
-  hot-load), uninstall with a second confirmation, and one-click update when a newer version exists
+  hot-load), uninstall with a second confirmation, and a per-plugin update when a newer version exists
+- **Update hints, confirmed one at a time** (v1.1.0): the header's "Plugin updates" button carries a
+  count badge, and so does the sidebar entry; opening it lists every outdated plugin with its own
+  "Update to x.y.z". There is deliberately **no update-all**: each click changes one dependency, so a
+  failure cannot take the others down and you can see exactly which package moved
+- **Update the market itself** (v1.1.0): "Check for updates" turns into "Update to x.y.z" when a newer
+  release exists, downloads it, verifies it, and hands it to the Host — then asks for a **DSH restart**
+  (the Host half is cached in the running process, so the button never claims it already took effect)
 - **An honest catalog status**: source, entry count, and refresh time; when a refresh fails it says
   plainly that the data is the previous cache instead of pretending it is current
 - **Errors that tell you what to do next**: what happened, why, and what to do now, plus a retry
 - **Themes and languages**: colors come from host theme tokens only; copy follows the host locale
   (Chinese / English)
+- **Restrained motion** (v1.1.0): staggered card entry, hover lift, button press rebound, a sliding tab
+  underline, notices that slide in with a countdown line, the update list expanding in place, and an
+  indeterminate progress bar during any write. With the system's "reduce motion" setting everything is
+  turned off and the content still renders complete — verified in a real browser, not just in code
+
+![The two new header buttons and the expanded update list](assets/market-updates.png)
+
+![Header toolbar: Plugin updates (with badge) / Check for updates / Refresh catalog](assets/market-header-actions.png)
 
 ## Configuration
 
@@ -85,25 +100,37 @@ same file inside a 1.2 MB gzip tarball in a few hundred milliseconds — measure
   `Sec-Fetch-Site: cross-site` are always refused, and the body limit is 64 KiB
 - The market refuses to uninstall itself and points at the official terminal command instead
 - Catalog fetching is GET-only, carries no credentials, and writes nothing to disk
+- **Self-update goes through the jsDelivr CDN** (GitHub is blocked from this machine and Release
+  assets have no dependable mirror). Three checks: the artifact path must be `releases/*.tgz`, its
+  `sha256` must match `releases/index.json`, and the tarball must declare the expected package name and
+  version. **This does not stop a swapped CDN plus manifest** — that needs an independent signing key,
+  which does not exist yet. The channel also requires the repository to stay public; if it goes
+  private the button reports "no update channel answered"
 
 ## Known limitations
 
 - Web and desktop profiles only (a headless profile gets the Host half alone)
-- Changes that require a restart are reported honestly; no automatic restart helper
+- Changes that require a restart are reported honestly; no automatic restart helper (a self-update
+  install also needs one restart)
 - No bundled catalog snapshot: when fetching fails the market reports the failure rather than
   serving stale data (a plugin published today must not read as "does not exist")
 - No favorites, notes, groups, backup/restore, theme market, or comments (see
   `docs/PLUGIN-MARKET.md` §7)
+- Motion is only guaranteed at the computed-style level (name, fill mode, delay, and that it can be
+  switched off); the look of a specific frame and scroll compositing performance are not measured
 
 ## Development and verification
 
 - Interface contract: `docs/API-CONTRACT.md`
 - Design and specification mapping: `docs/PLUGIN-MARKET.md`
 - Verification report: `verify/REPORT.md`, entry point `scripts/verify-market.ps1`
+- Real-browser acceptance (headless Edge + CDP, writes screenshots): `pwsh -File verify/ui-check.ps1`
 
 ```sh
 node --check plugin-market/lib/index.js
 node --check plugin-market/lib/client.js
+node verify/self-update.test.mjs
+node verify/client-copy.test.mjs
 ```
 
 ## License
