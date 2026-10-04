@@ -200,10 +200,17 @@ REPORT 的「工具缺陷与修正」一节——验收报告承认自己的测�
   再切成 `reduce` 证明 `animation-name` 变成 `none` 而列表行仍然在（内容不会消失）；
 - 页面控制台无插件错误。
 
-结论：**24/24 通过**，截图落在 `verify/logs/ui/`（`market-updates-open.png`、
-`market-header-zoom.png`、`market-header-closed.png`、`market-reduced-motion.png`）。
+结论：**24/24 通过**（v1.1.3 加了 5 条布局断言后为 **29/29**），截图落在 `verify/logs/ui/`
+（`market-updates-open.png`、`market-header-zoom.png`、`market-header-closed.png`、
+`market-reduced-motion.png`、`market-short-viewport.png`）。
 顺带记一个踩点：headless Chromium **默认就是 `prefers-reduced-motion: reduce`**，
 不显式钉 `no-preference` 的话，「动效生效」那组断言测的是一条永远关着动画的路径。
+
+用户报的「提示条显示不全」修在 v1.1.3，根因是 CSS 的自动最小尺寸规则（带非 visible `overflow`
+的 flex 项自动最小尺寸为 0，于是被溢出量压扁、文字被自己裁掉）。最小复现见
+`verify/repro-notice-clip.html`，完整机理与实测数据见 [REPORT §12.12](REPORT.md)：
+
+![修复前 vs 修复后](assets/notice-clip-before-after.png)
 
 ### 8.4 自更新端到端（真实 CDN + 真实安装）
 
