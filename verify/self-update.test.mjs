@@ -104,7 +104,7 @@ check('pickLatestVersion 取最大且忽略垃圾项', () => {
 // ── 2. 清单校验 ─────────────────────────────────────────────────────
 console.log('\n[2] index.json 的路径与哈希校验')
 check('tarball 路径必须落在 releases/*.tgz', () => {
-  assert.equal(isReleaseTarballPath('releases/dsh-plugin-market-1.1.0.tgz'), true)
+  assert.equal(isReleaseTarballPath('releases/dsh-market-1.1.0.tgz'), true)
   for (const bad of ['../evil.tgz', 'releases/../../evil.tgz', '/abs/evil.tgz', 'releases/x.tar', 'https://cdn/x.tgz', null]) {
     assert.equal(isReleaseTarballPath(bad), false, `应当拒绝 ${String(bad)}`)
   }
@@ -142,9 +142,9 @@ check('readIndex 对不认识的结构返回 null', () => {
 // ── 3. 产物自证 ─────────────────────────────────────────────────────
 console.log('\n[3] 产物自证（解 tarball 读 package/package.json）')
 check('能读出包名与版本', () => {
-  const verdict = readArtifactManifest(makeTarball('dsh-plugin-market', '1.1.0'))
+  const verdict = readArtifactManifest(makeTarball('dsh-market', '1.1.0'))
   assert.equal(verdict.ok, true)
-  assert.equal(verdict.name, 'dsh-plugin-market')
+  assert.equal(verdict.name, 'dsh-market')
   assert.equal(verdict.version, '1.1.0')
 })
 check('没有 package/package.json 的 tarball 被拒绝', () => {
@@ -160,7 +160,7 @@ console.log('\n[4] check()：源顺序、版本判定、10 分钟缓存')
 
 const REPO_INDEX = (version, tarballVersion = version) => ({
   channel: 'jsdelivr',
-  latest: { version, tag: `v${version}`, versionCode: 10100, tarball: `releases/dsh-plugin-market-${tarballVersion}.tgz`, sha256: 'd'.repeat(64), bytes: 1234, build: '+1.abc1234', releasedAt: '2026-10-04T00:00:00Z' },
+  latest: { version, tag: `v${version}`, versionCode: 10100, tarball: `releases/dsh-market-${tarballVersion}.tgz`, sha256: 'd'.repeat(64), bytes: 1234, build: '+1.abc1234', releasedAt: '2026-10-04T00:00:00Z' },
   versions: [],
 })
 
@@ -197,7 +197,7 @@ await checkAsync('标签列表 → 该标签的 index.json → 判定有更新',
   assert.equal(result.updateAvailable, true)
   assert.equal(result.installable, true)
   assert.equal(result.channel, 'jsdelivr-tags')
-  assert.equal(result.url, 'https://cdn.jsdelivr.net/gh/Winnie-0721/dsh-plugin-market@v1.1.0/releases/dsh-plugin-market-1.1.0.tgz')
+  assert.equal(result.url, 'https://cdn.jsdelivr.net/gh/Winnie-0721/dsh-plugin-market@v1.1.0/releases/dsh-market-1.1.0.tgz')
   assert.equal(result.sha256, 'd'.repeat(64))
 })
 
@@ -312,7 +312,7 @@ await checkAsync('GitHub 限流时结论不受影响（它只是一个源，不�
 // ── 5. apply()：拒绝路径绝不安装 ─────────────────────────────────────
 console.log('\n[5] apply()：拒绝路径绝不调用 pluginManager')
 
-const TARBALL = makeTarball('dsh-plugin-market', '1.1.0')
+const TARBALL = makeTarball('dsh-market', '1.1.0')
 const TARBALL_SHA = sha256(TARBALL)
 
 function applyFetch(tarball = TARBALL, indexVersion = '1.1.0', sha = TARBALL_SHA) {
@@ -321,7 +321,7 @@ function applyFetch(tarball = TARBALL, indexVersion = '1.1.0', sha = TARBALL_SHA
     ['releases/index.json', jsonResponse({
       latest: {
         version: indexVersion, tag: `v${indexVersion}`, versionCode: 10100,
-        tarball: `releases/dsh-plugin-market-${indexVersion}.tgz`, sha256: sha, bytes: tarball.length,
+        tarball: `releases/dsh-market-${indexVersion}.tgz`, sha256: sha, bytes: tarball.length,
       },
       versions: [],
     })],
@@ -371,7 +371,7 @@ await checkAsync('字节数与清单不符：拒绝', async () => {
   const fetchImpl = fakeFetch([
     ['data.jsdelivr.com', jsonResponse({ versions: [{ version: '1.1.0' }] })],
     ['releases/index.json', jsonResponse({
-      latest: { version: '1.1.0', tag: 'v1.1.0', tarball: 'releases/dsh-plugin-market-1.1.0.tgz', sha256: TARBALL_SHA, bytes: TARBALL.length + 1 },
+      latest: { version: '1.1.0', tag: 'v1.1.0', tarball: 'releases/dsh-market-1.1.0.tgz', sha256: TARBALL_SHA, bytes: TARBALL.length + 1 },
       versions: [],
     })],
     ['.tgz', { ok: true, status: 200, arrayBuffer: async () => TARBALL }],
@@ -423,7 +423,7 @@ await checkAsync('正常路径：下载 → 落盘 → 用本地绝对路径安�
     assert.equal(result.requiresRestart, true, '宿主半在进程里被缓存，必须要求重启')
     assert.equal(manager.calls.length, 1)
     const spec = manager.calls[0].spec
-    assert.ok(spec.endsWith('dsh-plugin-market-1.1.0.tgz'), `安装 spec 应是落盘后的 tarball：${spec}`)
+    assert.ok(spec.endsWith('dsh-market-1.1.0.tgz'), `安装 spec 应是落盘后的 tarball：${spec}`)
     // 安装用的是绝对路径：pnpm 不认相对路径（install-spec.ts 会直接拒绝）。
     assert.ok(/^[A-Za-z]:[\\/]/.test(spec) || spec.startsWith('/'), `必须是绝对路径：${spec}`)
     assert.deepEqual(readFileSync(spec), TARBALL, '落盘的字节必须与下载到的一致')
@@ -438,12 +438,12 @@ await checkAsync('标签地址 404 时改用 @main 的同一路径下载（内�
     const fetchImpl = fakeFetch([
       ['data.jsdelivr.com', jsonResponse({ versions: [{ version: '1.1.0' }] })],
       ['releases/index.json', jsonResponse({
-        latest: { version: '1.1.0', tag: 'v1.1.0', tarball: 'releases/dsh-plugin-market-1.1.0.tgz', sha256: TARBALL_SHA, bytes: TARBALL.length },
+        latest: { version: '1.1.0', tag: 'v1.1.0', tarball: 'releases/dsh-market-1.1.0.tgz', sha256: TARBALL_SHA, bytes: TARBALL.length },
         versions: [],
       })],
       // 标签还没被 CDN 索引（实测会 404 一阵），main 分支上有同一份文件
-      ['@v1.1.0/releases/dsh-plugin-market-1.1.0.tgz', { ok: false, status: 404, text: async () => 'not found' }],
-      ['@main/releases/dsh-plugin-market-1.1.0.tgz', { ok: true, status: 200, arrayBuffer: async () => TARBALL }],
+      ['@v1.1.0/releases/dsh-market-1.1.0.tgz', { ok: false, status: 404, text: async () => 'not found' }],
+      ['@main/releases/dsh-market-1.1.0.tgz', { ok: true, status: 200, arrayBuffer: async () => TARBALL }],
     ])
     const manager = fakeManager()
     const updater = createSelfUpdater({ fetchImpl, current: '1.0.0', manager, downloadDir: dir, cacheMs: 0, logger: { warn() {} } })
@@ -451,7 +451,7 @@ await checkAsync('标签地址 404 时改用 @main 的同一路径下载（内�
     assert.equal(result.ok, true, '标签 404 不该让更新失败')
     assert.equal(result.to, '1.1.0')
     assert.equal(manager.calls.length, 1)
-    assert.ok(fetchImpl.calls.some((url) => url.includes('@main/releases/dsh-plugin-market-1.1.0.tgz')), '应当真的去试了 main 分支')
+    assert.ok(fetchImpl.calls.some((url) => url.includes('@main/releases/dsh-market-1.1.0.tgz')), '应当真的去试了 main 分支')
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
@@ -465,11 +465,11 @@ await checkAsync('拿到了字节但哈希不符 = 硬失败，绝不换另一�
     const fetchImpl = fakeFetch([
       ['data.jsdelivr.com', jsonResponse({ versions: [{ version: '1.1.0' }] })],
       ['releases/index.json', jsonResponse({
-        latest: { version: '1.1.0', tag: 'v1.1.0', tarball: 'releases/dsh-plugin-market-1.1.0.tgz', sha256: TARBALL_SHA, bytes: TARBALL.length },
+        latest: { version: '1.1.0', tag: 'v1.1.0', tarball: 'releases/dsh-market-1.1.0.tgz', sha256: TARBALL_SHA, bytes: TARBALL.length },
         versions: [],
       })],
-      ['@v1.1.0/releases/dsh-plugin-market-1.1.0.tgz', { ok: true, status: 200, arrayBuffer: async () => tampered }],
-      ['@main/releases/dsh-plugin-market-1.1.0.tgz', { ok: true, status: 200, arrayBuffer: async () => TARBALL }],
+      ['@v1.1.0/releases/dsh-market-1.1.0.tgz', { ok: true, status: 200, arrayBuffer: async () => tampered }],
+      ['@main/releases/dsh-market-1.1.0.tgz', { ok: true, status: 200, arrayBuffer: async () => TARBALL }],
     ])
     const manager = fakeManager()
     const updater = createSelfUpdater({ fetchImpl, current: '1.0.0', manager, downloadDir: dir, cacheMs: 0, logger: { warn() {} } })
@@ -477,7 +477,7 @@ await checkAsync('拿到了字节但哈希不符 = 硬失败，绝不换另一�
     assert.equal(result.ok, false)
     assert.equal(result.code, 'self-update-integrity')
     assert.equal(manager.calls.length, 0, '字节都拿到了还哈希不符，是篡改信号，不能换个来源就放过')
-    assert.equal(fetchImpl.calls.some((url) => url.includes('@main/releases/dsh-plugin-market-1.1.0.tgz')), false)
+    assert.equal(fetchImpl.calls.some((url) => url.includes('@main/releases/dsh-market-1.1.0.tgz')), false)
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
@@ -533,7 +533,7 @@ await checkAsync('两条 CDN 路都不通时用 GitHub Release 附件（第三�
     const fetchImpl = fakeFetch([
       ['api.github.com', jsonResponse({ tag_name: 'v1.1.0' })],
       ['releases/index.json', jsonResponse({
-        latest: { version: '1.1.0', tag: 'v1.1.0', tarball: 'releases/dsh-plugin-market-1.1.0.tgz', sha256: TARBALL_SHA, bytes: TARBALL.length },
+        latest: { version: '1.1.0', tag: 'v1.1.0', tarball: 'releases/dsh-market-1.1.0.tgz', sha256: TARBALL_SHA, bytes: TARBALL.length },
         versions: [],
       })],
       ['cdn.jsdelivr.net', { ok: false, status: 404, text: async () => 'not found' }],
@@ -545,7 +545,7 @@ await checkAsync('两条 CDN 路都不通时用 GitHub Release 附件（第三�
     assert.equal(result.ok, true, 'Release 附件这条路要能顶上')
     assert.equal(result.to, '1.1.0')
     assert.equal(manager.calls.length, 1)
-    assert.ok(fetchImpl.calls.some((url) => url.includes('releases/download/v1.1.0/dsh-plugin-market-1.1.0.tgz')))
+    assert.ok(fetchImpl.calls.some((url) => url.includes('releases/download/v1.1.0/dsh-market-1.1.0.tgz')))
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }

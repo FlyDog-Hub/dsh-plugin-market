@@ -35,7 +35,7 @@ function Invoke-MarketRouteChecks {
 
   $sameOrigin = New-SameOriginHeaders -Port $Port
   $outsideBody = '{"name":"evil/not-in-catalog-pkg","spec":"evil-not-in-catalog-pkg-xyz"}'
-  $selfBody = '{"name":"dsh-plugin-market"}'
+  $selfBody = '{"name":"dsh-market"}'
   $haveSession = ($null -ne $Session)
 
   function Probe([string]$Path, [string]$Method = 'GET', $Headers = $null, [string]$Body = $null, [int]$Timeout = 40, [string]$CType = 'application/json', [switch]$NoCookie) {
@@ -108,8 +108,8 @@ function Invoke-MarketRouteChecks {
   $mgrAvail = Get-PropOrNull (Get-PropOrNull $j 'manager') 'available'
   $hostDsh = Get-PropOrNull (Get-PropOrNull $j 'host') 'dsh'
   Emit 'A4a' 'GET /status 返回 ok:true 且字段齐全（catalog 允许 null，§5.4/§2.1）' "GET $BaseUrl/status" `
-    "HTTP 200；ok:true；含 plugin/host/manager/catalog 四个字段；Content-Type: application/json；plugin.name=dsh-plugin-market；plugin.version 等于 package.json 的 version（当前 $expectedVersion）；catalog 为 null 或含 source/count/updated/fetchedAt/stale 的对象" `
-    (($r.Status -eq 200) -and ($ok -eq $true) -and ($missing.Count -eq 0) -and $catPresent -and $catInnerOk -and ($ct -match 'application/json') -and ($pn -eq 'dsh-plugin-market') -and ($expectedVersion -ne '') -and ($pv -eq $expectedVersion)) `
+    "HTTP 200；ok:true；含 plugin/host/manager/catalog 四个字段；Content-Type: application/json；plugin.name=dsh-market；plugin.version 等于 package.json 的 version（当前 $expectedVersion）；catalog 为 null 或含 source/count/updated/fetchedAt/stale 的对象" `
+    (($r.Status -eq 200) -and ($ok -eq $true) -and ($missing.Count -eq 0) -and $catPresent -and $catInnerOk -and ($ct -match 'application/json') -and ($pn -eq 'dsh-market') -and ($expectedVersion -ne '') -and ($pv -eq $expectedVersion)) `
     "status=$($r.Status) ok=$ok 缺字段=[$($missing -join ',')] catalog=$catState $catInnerMsg plugin.name=$pn plugin.version=$pv manager.available=$mgrAvail host.dsh=$hostDsh contentType=$ct cacheControl=$cc2" `
     $r.Body.Substring(0, [Math]::Min(900, $r.Body.Length))
 
@@ -142,9 +142,9 @@ function Invoke-MarketRouteChecks {
   foreach ($f in @('bundles', 'plugins')) { if ($null -eq (Get-PropOrNull $j $f)) { $missing += $f } }
   $bs = Get-ArrayProp $j 'bundles'
   $pls = Get-ArrayProp $j 'plugins'
-  $selfRows = @($bs | Where-Object { (Get-PropOrNull $_ 'name') -eq 'dsh-plugin-market' }).Count
+  $selfRows = @($bs | Where-Object { (Get-PropOrNull $_ 'name') -eq 'dsh-market' }).Count
   Emit 'A4c' 'GET /installed 返回 ok:true 且 bundles 含市场自身（§5.4）' "GET $BaseUrl/installed" `
-    'HTTP 200；ok:true；含 bundles/plugins；bundles 里能找到 name=dsh-plugin-market' `
+    'HTTP 200；ok:true；含 bundles/plugins；bundles 里能找到 name=dsh-market' `
     (($r.Status -eq 200) -and ($ok -eq $true) -and ($missing.Count -eq 0) -and ($ct -match 'application/json') -and ($selfRows -ge 1)) `
     "status=$($r.Status) ok=$ok 缺字段=[$($missing -join ',')] bundles=$($bs.Count) 含市场自身=$selfRows plugins=$($pls.Count)" `
     $r.Body.Substring(0, [Math]::Min(1200, $r.Body.Length))
@@ -320,7 +320,7 @@ function Invoke-MarketRouteChecks {
     $r.Body.Substring(0, [Math]::Min(300, $r.Body.Length))
 
   # ---------------- 额外：非 JSON Content-Type ----------------
-  $formBody = 'name=dsh-plugin-market&enabled=false'
+  $formBody = 'name=dsh-market&enabled=false'
   $r = Probe '/toggle' 'POST' $sameOrigin $formBody 60 'application/x-www-form-urlencoded'
   $j = ConvertFrom-JsonSafe $r.Body
   $code = ErrField $j 'code'

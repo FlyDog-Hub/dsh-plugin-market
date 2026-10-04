@@ -6,8 +6,8 @@
 
 | 项 | 值 |
 |---|---|
-| npm 包名 | `dsh-plugin-market` |
-| 客户端 bundle id | `dsh-plugin-market`（必须与包名一致） |
+| npm 包名 | `dsh-market` |
+| 客户端 bundle id | `dsh-market`（必须与包名一致） |
 | Loader 行 id（cordis.patch.yml） | `plugin-market` |
 | main 面板 key | `plugin-market` |
 | 侧边栏底部入口 id | `plugin-market`（`sidebar.footer.action`） |
@@ -40,7 +40,7 @@
 ```json
 {
   "ok": true,
-  "plugin": { "name": "dsh-plugin-market", "version": "1.0.0" },
+  "plugin": { "name": "dsh-market", "version": "1.0.0" },
   "host": { "dsh": "0.2.0-rc.2", "node": "v22.19.0", "platform": "win32", "profile": "desktop" },
   "manager": { "available": true, "registries": { "registry": null, "fallbackRegistries": [], "resolved": null } },
   "catalog": { "source": "https://awesome-dsh-plugin.com/plugins.json", "count": 4412, "updated": "2026-10-01", "fetchedAt": "2026-10-03T12:00:00.000Z", "stale": false, "error": null }
@@ -127,7 +127,7 @@ Query 参数（全部可选，未知参数忽略）：
 }
 ```
 
-- `bundles` 直接投影 `pluginManager.listBundles()`：`name`、`version`、`description`、`enabled`、`installed`、`removable`、`rows`；`official` = 名称以 `@deepseek-ai/` 开头；`market` = 名称为 `dsh-plugin-market`。
+- `bundles` 直接投影 `pluginManager.listBundles()`：`name`、`version`、`description`、`enabled`、`installed`、`removable`、`rows`；`official` = 名称以 `@deepseek-ai/` 开头；`market` = 名称为 `dsh-market`。
 - `error` 为 `null` 或 `{ "code": string, "diagnostic"?: string }`。
 - `latest` / `updateAvailable` 通过与目录缓存 join 得到；目录不可用时为 `null` / `false`。`latest` = 目录当前版本（可能低于已装版本）；`updateAvailable` 仅当目录版本 **严格更高** 时为 `true`。
 - `plugins` 投影 `pluginManager.listPlugins()`，额外字段：`title`（本地化标题，取不到为 `null`）、`bundle`（该 entry 所属 bundle 名，取不到为 `null`）。
@@ -166,7 +166,7 @@ Query 参数（全部可选，未知参数忽略）：
 
 请求 `{ "name": "@feiyang666/dsh-usage-plugin" }` → `pluginManager.removeBundle(name)`。
 
-- `name === "dsh-plugin-market"` ⇒ `400 not-allowed`，`message`：市场不能卸载自己，请在终端执行 `dsh plugin --profile <profile> remove dsh-plugin-market`。
+- `name === "dsh-market"` ⇒ `400 not-allowed`，`message`：市场不能卸载自己，请在终端执行 `dsh plugin --profile <profile> remove dsh-market`。
 - 其余响应同 §2.4 的字段（`stage: "remove"`）。
 
 ### 2.6 `POST /plugin-market/toggle`
@@ -199,7 +199,7 @@ Query 参数（全部可选，未知参数忽略）：
     "versionCode": 10100, "build": "+15.abc1234", "releasedAt": "2026-10-04T…",
     "updateAvailable": true, "installable": true,
     "channel": "jsdelivr-tags",
-    "url": "https://cdn.jsdelivr.net/gh/Winnie-0721/dsh-plugin-market@v1.1.0/releases/dsh-plugin-market-1.1.0.tgz",
+    "url": "https://cdn.jsdelivr.net/gh/Winnie-0721/dsh-plugin-market@v1.1.0/releases/dsh-market-1.1.0.tgz",
     "sha256": "…64 位十六进制…", "bytes": 309082,
     "checkedAt": "2026-10-04T…"
   }
@@ -273,7 +273,7 @@ Query 参数（全部可选，未知参数忽略）：
 
 ```js
 window.__ModuleLoader__.load({
-  id: "dsh-plugin-market",
+  id: "dsh-market",
   factory: (require) => {
     var module = { exports: {} }; var exports = module.exports;
     var React = require("react"); var el = React.createElement;
@@ -323,8 +323,8 @@ window.__ModuleLoader__.load({
 ## 5. 验收断言（verifier 用）
 
 1. 临时 profile 启动 `dsh web` 成功，日志无 FAILED fiber。
-2. 首页 HTML 的 `window.__DSH_BOOT__` 里存在 `id === 'dsh-plugin-market'` 的 entry，URL 形如 `/plugins/??dsh-plugin-market/client.js&rev=…`。
-3. 该 URL 返回 JS 且包含 `__ModuleLoader__.load` 与 `id:"dsh-plugin-market"`。
+2. 首页 HTML 的 `window.__DSH_BOOT__` 里存在 `id === 'dsh-market'` 的 entry，URL 形如 `/plugins/??dsh-market/client.js&rev=…`。
+3. 该 URL 返回 JS 且包含 `__ModuleLoader__.load` 与 `id:"dsh-market"`。
 4. `GET /plugin-market/status`、`/catalog?query=dsh&pageSize=5`、`/installed` 返回 `ok:true`，字段齐全。
 5. 写操作的来源判定（**必须在带 cookie 的已鉴权会话上测**，否则会先被宿主信任层以空 body 403 拦掉，测不到插件自己的守卫）：
    - **桌面壳形状**：带 cookie、无 `Origin`、无 `Sec-Fetch-Site` → `200`（这是修复后的关键回归项）；

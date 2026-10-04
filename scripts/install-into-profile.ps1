@@ -1,4 +1,4 @@
-﻿# install-into-profile.ps1 — 把 dsh-plugin-market 装进指定 DSH profile，并保留可回滚备份。
+﻿# install-into-profile.ps1 — 把 dsh-market 装进指定 DSH profile，并保留可回滚备份。
 #
 # 用法：
 #   pwsh -File scripts\install-into-profile.ps1 -Profile desktop

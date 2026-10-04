@@ -1,4 +1,4 @@
-# dsh-plugin-market — DeepSeek Harness 插件市场
+# dsh-market — DeepSeek Harness 插件市场
 
 一个装进 DeepSeek Harness（以下简称 DSH）的插件市场：**侧边栏底部一个入口**，点开就能浏览、
 搜索社区插件目录，并一键安装、更新、启用/停用、卸载，全程不用离开 GUI。
@@ -29,13 +29,11 @@ pwsh -File scripts\install-into-profile.ps1 -Profile desktop -Rollback -BackupDi
 ### 从 GitHub Release 安装（v1.0.0）
 
 ```powershell
-dsh plugin --profile web add https://github.com/Winnie-0721/dsh-plugin-market/releases/download/v1.0.0/dsh-plugin-market-1.0.0.tgz
+dsh plugin --profile web add https://github.com/Winnie-0721/dsh-plugin-market/releases/download/v1.0.0/dsh-market-1.0.0.tgz
 ```
 
-本仓库**没有**发布到 npm：`dsh-plugin-market` 这个名字在 npm 上已属于另一个项目
-（latest `1.3.0`，`veloce-ailab/dsh-plugin-market`）。因此按名字安装（`add dsh-plugin-market`）
-会装到那个包，而且它会和本包**同名 bundle**，同机同时装两个会让 Loader 组合失败。
-可选的改名方案与代价见 [docs/RELEASING.md](docs/RELEASING.md) §4。
+本包已更名为 `dsh-market`（原 `dsh-plugin-market` 在 npm 上属于另一个项目）。
+发布到 npm 后即可直接 `dsh plugin add dsh-market` 安装；详见 [docs/RELEASING.md](docs/RELEASING.md) §4.2。
 
 ## 仓库结构
 

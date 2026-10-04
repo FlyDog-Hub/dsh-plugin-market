@@ -1,5 +1,25 @@
 # Changelog
 
+## Unreleased
+
+**包名变更**：`dsh-plugin-market` → `dsh-market`。
+
+原 npm 包名 `dsh-plugin-market` 已被另一个项目（fireguo / veloce-ailab）占用，无法发布到 npm。
+经用户确认，更名为 `dsh-market`（npm 上可用）。
+
+影响范围：
+- `package.json` name、`cordis.patch.yml` patch name、`lib/index.js` PLUGIN_NAME、
+  `lib/client.js` bundle id / SELF_NAME / STYLE_ID、`lib/self-update.js` MARKET_PACKAGE
+- 所有文档、测试、release 脚本中的包名引用
+- GitHub 仓库名不变（仍为 `Winnie-0721/dsh-plugin-market`），self-update 的 MARKET_REPO 不变
+- tarball 文件名从 `dsh-plugin-market-<v>.tgz` 变为 `dsh-market-<v>.tgz`
+
+**迁移注意**：已安装旧名的 profile 需要手动卸载旧包再安装新包：
+```sh
+dsh plugin --profile <profile> remove dsh-plugin-market
+dsh plugin --profile <profile> add <新包路径或 npm 名>
+```
+
 ## 1.1.3
 
 修「顶部提示条显示不全」——提示条被压成一条、文字只剩半行（用户截图就是这样）。

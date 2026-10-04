@@ -3,7 +3,7 @@
 # 为什么必须做这一步：如果断言在明显错误的响应上也能 PASS，那么正式验收的 PASS 毫无信息量。
 # 做法是把同一套断言函数指向两个受控 stub：
 #   1) wrong-market stub：每个端点都刻意违反契约 → 所有市场断言必须 FAIL
-#   2) boot stub 的 /good 与 /bad：分别构造「有 / 没有 dsh-plugin-market entry」的 boot 图
+#   2) boot stub 的 /good 与 /bad：分别构造「有 / 没有 dsh-market entry」的 boot 图
 #      → A2/A3 必须一绿一红
 # 自检本身只有一条判据：实测结果与预期方向完全一致。
 $ErrorActionPreference = 'Stop'
@@ -149,7 +149,7 @@ try {
         param($r)
         $null = $sub.Add([pscustomobject]@{ Id = $r.Id; Pass = [bool]$r.Pass; Actual = $r.Actual })
       }
-      Invoke-BootGraphChecks -BootGraph $graph -Origin $origin -AssertId 'dsh-plugin-market' -Collect $subCollector
+      Invoke-BootGraphChecks -BootGraph $graph -Origin $origin -AssertId 'dsh-market' -Collect $subCollector
       Write-Host "  --- $($variant.Name) 图 (shape=$($graph.Shape)) ---"
       foreach ($s in $sub) {
         $want = 'FAIL'

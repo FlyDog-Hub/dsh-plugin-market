@@ -54,7 +54,7 @@
      其它路径（例如并行进行的 `verify/**` 验收脚本）有改动只警告、不阻塞——它们既不进发布物，
      也不进发布提交，把一场正在跑的验收当成发布阻塞没有意义。
 3. **递增**：按 `-Bump` 写入新的 `version`；
-4. **打包**：`pnpm pack` → `dist/dsh-plugin-market-<version>.tgz`，并写 `dist/version.json`
+4. **打包**：`pnpm pack` → `dist/dsh-market-<version>.tgz`，并写 `dist/version.json`
    （`version` / `versionCode` / 提交数 / 短哈希 / 构建时间）；
 5. **入 CDN 目录**：把 tarball 复制进 `releases/`，并更新 `releases/index.json`
    （`latest` + 每版的 `versionCode` / `sha256` / `bytes` / `tarball`）——这两样必须进版本提交，
@@ -97,7 +97,7 @@ $env:HTTPS_PROXY='http://127.0.0.1:7890'; $env:HTTP_PROXY='http://127.0.0.1:7890
 
 ```powershell
 # 版本号换成当前 Release 的（历次 Release 见仓库 Releases 页）
-dsh plugin --profile web add https://github.com/Winnie-0721/dsh-plugin-market/releases/download/v1.1.1/dsh-plugin-market-1.1.1.tgz
+dsh plugin --profile web add https://github.com/Winnie-0721/dsh-plugin-market/releases/download/v1.1.1/dsh-market-1.1.1.tgz
 ```
 
 装好第一次之后就不必再记这条命令：市场头部的「检查市场更新」会走 §4.4 的 CDN 通道自己完成升级。
@@ -106,35 +106,16 @@ dsh plugin --profile web add https://github.com/Winnie-0721/dsh-plugin-market/re
 上面这条命令在全新 profile 上实测：**10.6 秒装完、bundle 已激活、`node_modules` 里有包**。
 这条路径不需要任何 npm 账号，也是本仓库当前唯一可用的「按名字以外」的分发方式。
 
-### 4.2 发布到 npm：**名字已被占用，不能直接用 `dsh-plugin-market`**
+### 4.2 发布到 npm
 
-`dsh-plugin-market` 在 npm 上属于**另一个项目**（实测）：
+本包已更名为 `dsh-market`（原 `dsh-plugin-market` 在 npm 上属于另一个项目 fireguo/veloce-ailab，
+无法使用）。改名涉及的代码位置已全部更新：`package.json`、`cordis.patch.yml`、`lib/client.js`、
+`lib/index.js`、`lib/self-update.js`、README 与文档。
 
-| 项 | 值 |
-|---|---|
-| latest | `1.3.0`（共 4 个版本，首发 2026-08-14） |
-| maintainer | `fireguo`（hjrluobo2h@qq.com） |
-| repository | `https://github.com/veloce-ailab/dsh-plugin-market` |
-| description | Plugin market foundation with a standalone Web configuration editor for DeepSeek Harness |
-
-两条后果：
-
-1. **不能发布**：`pnpm publish` 会被 registry 以 `403 you do not have permission` 拒绝；
-2. **同机会撞行**：本包的 bundle 名就是 `dsh-plugin-market`。如果有人同时装了那个包，profile 里会出现两个同名
-   bundle → Loader 组合失败。要共存，必须先改名。
-
-**可选方案**（发布前的名字可用性均已实测，见下表）：
-
-| 方案 | 名字 | npm 可用性 | 代价 |
-|---|---|---|---|
-| A. 加 scope | `@winnie-0721/dsh-plugin-market` | 可用（需要你拥有该 scope） | 改 `package.json` 的 `name` → 安装身份变化 → 按 §1 的规则属于破坏兼容，要 `-Bump major` |
-| B. 换非 scoped 名 | `dsh-plugin-market-lite` / `dsh-market-x` / `dsh-market-rebuild` / `winnie-dsh-market` / `dshmarket2` | 均可用 | 同上 |
-| C. 只走 4.1 | 保持 `dsh-plugin-market` | — | 不能按名字装；与那个包同机冲突的风险仍在（文档需显著提示） |
-
-改名要同时改这几处（漏一处就会在运行时露出来）：`plugin-market/package.json` 的 `name`、
-`cordis.patch.yml` 的行 `name`、`lib/client.js` 里 `__ModuleLoader__.load({ id })`、
-`lib/index.js` 的 `PLUGIN_NAME`、README/文档里的安装命令，以及**已安装 profile 的重新安装**
-（`dsh plugin remove` 旧名 → `add` 新名）。改完用 `scripts/release.ps1 -Bump major` 发新版本号。
+发布前确认：
+1. `npm whoami` 能返回你的用户名（否则先 `npm login` 或设置 `NPM_TOKEN`）；
+2. `npm view dsh-market version` 返回 404（名字仍可用）；
+3. `pnpm publish --access public`（公开包需要显式指定 access）。
 
 ### 4.3 真要发 npm 时的检查单
 

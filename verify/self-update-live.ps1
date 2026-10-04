@@ -81,7 +81,7 @@ try {
     $actualHash = (Get-FileHash -LiteralPath $tarballPath -Algorithm SHA256).Hash.ToLowerInvariant()
     Record 'L4' '落盘的 tarball sha256 等于清单值（校验不是走过场）' ($actualHash -eq ([string]$sha).ToLowerInvariant()) "file=$actualHash manifest=$sha"
     $verifyArtifact = & $node (Join-Path $script:VerifyRoot 'lib\artifact-manifest.mjs') $tarballPath
-    $artifactOk = ($LASTEXITCODE -eq 0) -and ($verifyArtifact -match "dsh-plugin-market@$([regex]::Escape([string]$latest))")
+    $artifactOk = ($LASTEXITCODE -eq 0) -and ($verifyArtifact -match "dsh-market@$([regex]::Escape([string]$latest))")
     Record 'L4b' '产物自证：tarball 里的 package.json 声明 name@version' $artifactOk "node 输出=$verifyArtifact"
   } else {
     Record 'L4' '落盘的 tarball sha256 等于清单值' $false "没有拿到落盘路径：$tarballPath"
@@ -90,12 +90,12 @@ try {
 
   # 6) profile 真的被改了：依赖从 link: 变成那个本地 tarball
   $pm = ConvertFrom-JsonSafe (Get-Content -LiteralPath $profileManifest -Raw)
-  $dep = Get-PropOrNull (Get-PropOrNull $pm 'dependencies') 'dsh-plugin-market'
+  $dep = Get-PropOrNull (Get-PropOrNull $pm 'dependencies') 'dsh-market'
   # 版本号从 $latest 取，**不写死**——写死会在每次发版后把「pnpm 真的装了新版」判成失败
   # （这条断言自己踩过一次：它写死了 1.1.0，而当时实际装的是 1.1.2）。
   $depOk = ($null -ne $dep) -and ([string]$dep -match '^(file|link):') -and ($null -ne $latest) -and ([string]$dep -match [regex]::Escape([string]$latest))
   Record 'L5' 'scratch profile 的依赖被换成下载下来的本地 tarball（pnpm 真的装了）' $depOk `
-    "dependencies.dsh-plugin-market=$dep（期望含 $latest 的 file: 路径）"
+    "dependencies.dsh-market=$dep（期望含 $latest 的 file: 路径）"
 } finally {
   if ($null -ne $h) { Stop-DshHost $h | Out-Null }
   # 还原 package.json（按字节）并核对
@@ -105,7 +105,7 @@ try {
   else { Write-Host "  ✓ package.json 已按字节还原（sha256 $($originalSha.Substring(0,12))…）" }
   # 还原 scratch profile 的依赖，避免后续验收去用那个下载产物。
   #
-  # 顺序和范围都是踩出来的：只还原 manifest 不够——那次安装已经把 node_modules/dsh-plugin-market
+  # 顺序和范围都是踩出来的：只还原 manifest 不够——那次安装已经把 node_modules/dsh-market
   # 从符号链接变成了 tarball 解出来的实体目录，于是下一个宿主继续加载那份 1.1.x 而不是工作树
   # （实测：脚本以为宿主读的是临时改成 1.0.9 的工作树，实际它报 1.1.2，「有更新」的前提根本不成立）。
   # 而只删 pnpm-lock.yaml 也不够：pnpm 还有一份内部锁 node_modules/.pnpm/lock.yaml 记着那个 file: 依赖，
@@ -117,7 +117,7 @@ try {
     Remove-Item (Join-Path $profileDir 'node_modules\.pnpm\lock.yaml') -Force -ErrorAction SilentlyContinue
     try {
       $null = Invoke-DshPlugin -Profile 'marketcheck' -PnpmArgs @('add', (Join-Path $script:RepoRoot 'plugin-market')) -AllowFailure
-      $linked = Get-Item (Join-Path $profileDir 'node_modules\dsh-plugin-market') -Force
+      $linked = Get-Item (Join-Path $profileDir 'node_modules\dsh-market') -Force
       if ($linked.LinkType -eq 'Junction' -or $linked.LinkType -eq 'SymbolicLink') {
         Write-Host "  ✓ 依赖已重新链回工作树（$($linked.LinkType)）"
       } else {

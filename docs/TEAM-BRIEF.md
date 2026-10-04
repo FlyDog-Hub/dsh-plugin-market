@@ -6,7 +6,7 @@
 ## 1. 我们要交付什么
 
 一份**可安装、可运行**的 DSH 插件市场（参考 dsh-market，但按官方插件规范重新实现），
-包名 `dsh-plugin-market`，host + web client 双半，**入口放在侧边栏底部**（`sidebar.footer.action`，
+包名 `dsh-market`，host + web client 双半，**入口放在侧边栏底部**（`sidebar.footer.action`，
 截图里蓝色圈注的空白带，位于账号行 `epsilon-delta` 上方）。
 
 参考代码（只读，不要改）：

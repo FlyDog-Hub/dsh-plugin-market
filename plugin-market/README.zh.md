@@ -1,4 +1,4 @@
-# dsh-plugin-market
+# dsh-market
 
 [English](README.md) | 中文
 
@@ -17,7 +17,7 @@
 dsh plugin --profile web add "E:\AI\DeepSeek Harness\Dsh\plugin-market"
 
 # 从 GitHub Release 附件装（把版本号换成当前 Release 的；本包没有发到 npm）
-dsh plugin --profile web add https://github.com/Winnie-0721/dsh-plugin-market/releases/download/v1.1.1/dsh-plugin-market-1.1.1.tgz
+dsh plugin --profile web add https://github.com/Winnie-0721/dsh-plugin-market/releases/download/v1.1.1/dsh-market-1.1.1.tgz
 ```
 
 装完重启一次 `dsh web`（或让桌面端重新组合），刷新页面即可看到入口。

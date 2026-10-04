@@ -344,7 +344,7 @@ if (-not $notes) {
   if ($m.Success) { $notes = $m.Groups[1].Value.Trim() }
 }
 if (-not $notes) { $notes = "首个正式版本 $version。" }
-$notes = $notes + "`n`n---`n`n- versionName ``$version`` / versionCode ``$versionCode`` / build ``+$commits.$sha```n- 安装：``dsh plugin --profile web add <本页附件 dsh-plugin-market-$version.tgz>``（发布到 npm 后可直接 ``add $($manifest.name)``）`n- 目录源以 npm 镜像优先（实测 289ms）对官方源（本机直连 25–93s 超时）`n- 变更与验收细节见仓库 docs/ 与 verify/REPORT.md"
+$notes = $notes + "`n`n---`n`n- versionName ``$version`` / versionCode ``$versionCode`` / build ``+$commits.$sha```n- 安装：``dsh plugin --profile web add <本页附件 $($manifest.name)-$version.tgz>``（发布到 npm 后可直接 ``add $($manifest.name)``）`n- 目录源以 npm 镜像优先（实测 289ms）对官方源（本机直连 25–93s 超时）`n- 变更与验收细节见仓库 docs/ 与 verify/REPORT.md"
 # Release notes 用文件传递：Windows 下把多行字符串直接当命令行参数会被截断/转义。
 $notesPath = Join-Path $distDir "release-notes-v$version.md"
 [System.IO.File]::WriteAllText($notesPath, $notes, [System.Text.UTF8Encoding]::new($false))
