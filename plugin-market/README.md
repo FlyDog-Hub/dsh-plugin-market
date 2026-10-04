@@ -28,8 +28,8 @@ dsh plugin --profile web add https://github.com/Winnie-0721/dsh-plugin-market/re
 
 Restart `dsh web` once (or let the desktop app recompose), refresh the page, and the entry appears.
 After that first install you do not need the command again: the market's own **Check for updates**
-button does exactly this (over the jsDelivr CDN, with three verification checks, and it asks you to
-restart DSH once when it is done).
+button does exactly this (the GitHub Releases API and the jsDelivr CDN, with three verification
+checks, and it asks you to restart DSH once when it is done).
 
 On Windows you can install with a profile backup in one step:
 
@@ -103,12 +103,16 @@ same file inside a 1.2 MB gzip tarball in a few hundred milliseconds — measure
   `Sec-Fetch-Site: cross-site` are always refused, and the body limit is 64 KiB
 - The market refuses to uninstall itself and points at the official terminal command instead
 - Catalog fetching is GET-only, carries no credentials, and writes nothing to disk
-- **Self-update goes through the jsDelivr CDN** (GitHub is blocked from this machine and Release
-  assets have no dependable mirror). Three checks: the artifact path must be `releases/*.tgz`, its
-  `sha256` must match `releases/index.json`, and the tarball must declare the expected package name and
-  version. **This does not stop a swapped CDN plus manifest** — that needs an independent signing key,
-  which does not exist yet. The channel also requires the repository to stay public; if it goes
-  private the button reports "no update channel answered"
+- **Self-update tries three sources by freshness**: the GitHub Releases API (authoritative, but
+  anonymous calls are rate-limited to 60/hour) → the jsDelivr tag list → the `@main`
+  `releases/index.json`; when all three lag or are limited, it probes three candidate tags as a
+  bounded fallback (any tag is fetched on demand, which is what catches a just-published release).
+  The artifact is fetched from `@<tag>` → `@main` → the GitHub Release asset, and verified three
+  ways: the path must be `releases/*.tgz`, the `sha256` must match `releases/index.json`, and the
+  tarball must declare the expected package name and version. **This does not stop a swapped
+  manifest plus artifact** — that needs an independent signing key, which does not exist yet. The
+  channel also requires the repository to stay public; if it goes private the button reports
+  "no update channel answered"
 
 ## Known limitations
 

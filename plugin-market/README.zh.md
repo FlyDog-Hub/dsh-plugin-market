@@ -22,7 +22,7 @@ dsh plugin --profile web add https://github.com/Winnie-0721/dsh-plugin-market/re
 
 装完重启一次 `dsh web`（或让桌面端重新组合），刷新页面即可看到入口。
 装好之后就不必再记这条命令了：市场头部的「检查市场更新」会自己做这件事
-（走 jsDelivr CDN，下载后三道校验，装完提示你重启 DSH 一次）。
+（按新鲜度试 GitHub Releases API 与 jsDelivr，下载后三道校验，装完提示你重启 DSH 一次）。
 
 Windows 上一键安装并自动备份 profile：
 
@@ -79,9 +79,12 @@ pwsh -File scripts\install-into-profile.ps1 -Profile desktop -Rollback -BackupDi
 - 写操作只接受有可信来源证据的请求：官方桌面壳的 `dsh-app://app` origin、同源 `Origin`、或来自回环地址且没有任何来源头的请求（桌面端转发会剥掉这些头）；跨站 `Origin` / `Sec-Fetch-Site: cross-site` 一律拒绝
 - 市场不能卸载自己（避免点一下失去唯一入口），会提示在终端执行官方命令
 - 目录抓取只发 GET、不带任何凭据、不写磁盘
-- **自更新走 jsDelivr CDN**（GitHub 在本机直连被拦，Release 附件也没有稳定镜像）。三道校验：
-  产物路径必须是 `releases/*.tgz`、`sha256` 必须与 `releases/index.json` 一致、解开 tarball 后
-  包名与版本必须自证一致。**它挡不住「CDN 与清单一起被换」**——那需要独立签名密钥，目前没有。
+- **自更新按新鲜度试三个源**：GitHub Releases API（最权威，但匿名限流 60 次/小时）→ jsDelivr 标签列表
+  → jsDelivr `@main` 的清单；三者都会滞后或被限流时，再按常规递进探 3 个候选标签兜底
+  （任意标签是按需取的，所以这一层能追上刚发布的版本）。
+  下载依次试 `@<tag>` → `@main` → GitHub Release 附件，三道校验：产物路径必须是 `releases/*.tgz`、
+  `sha256` 必须与 `releases/index.json` 一致、解开 tarball 后包名与版本必须自证一致。
+  **它挡不住「清单与产物一起被换」**——那需要独立签名密钥，目前没有。
   这条通道还要求仓库保持 public；转 private 后按钮会变成「更新通道没有回应」
 
 ## 已知限制

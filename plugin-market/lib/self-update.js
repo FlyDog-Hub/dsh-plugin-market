@@ -1,20 +1,29 @@
 /**
  * 市场自身的更新通道。
  *
- * 为什么是 jsDelivr 而不是 GitHub Release：
- * 本机直连 github.com 会被重置、api.github.com 的每个真实路径都返回 403（GFW 拦截），
- * 走通需要 Clash 代理，而宿主进程只认 HTTP(S)_PROXY 环境变量、桌面版通常不带；
- * GitHub Release 附件也没有任何国内镜像能稳定代理。jsDelivr 直连可用（实测 85–2100ms，
- * 冷启动后走 CDN 缓存），代价是**只能取仓库里的文件**，所以发布产物由 release.ps1
- * 提交进 `releases/`（见 docs/RELEASING.md §4.4）。
+ * 三个源都试，顺序按「新鲜度」排（2026-10-04 在本机实测，不用代理）：
+ *
+ *   1. GitHub Releases API：`releases/latest` 立刻返回 v1.1.1（1.6s / 450ms），是权威且最新的。
+ *      代价是**匿名限流 60 次/小时/IP**，且会与机器上其它 GitHub 客户端共享这个额度；
+ *      被限流时返回 403，我们把它当成该源失败，继续往下走。10 分钟缓存把点击量封在 ~6 次/小时。
+ *   2. jsDelivr 标签列表：不限流、CDN 缓存、85–2100ms，但**列表会滞后**——
+ *      实测发布一小时后它仍然只有旧版本。
+ *   3. jsDelivr `@main` 的 releases/index.json：同样是缓存，实测滞后（分支内容可缓存 12 小时）。
+ *   4. 兜底：按 MAJOR.MINOR.PATCH 的常规递进探三个候选标签。**任意标签是按需取的**，
+ *      刚推完 `@v<tag>/…` 立刻 200，所以这一步能追上前面三个源的滞后。
+ *
+ * 更正一条曾经的错误结论：早先我写「本机直连 api.github.com 一律 403、github.com 被重置」，
+ * 并把原因归给 GFW。实际是当时仓库还是 **private**（未鉴权取 releases/latest 就是 404），
+ * 加上匿名限流返回的 403 被误读成封锁。今天实测：API 200（X-RateLimit-Remaining 47/60）、
+ * github.com 200、Release 附件 200（2.7s 直连 / 737ms 走代理），sha256 与本地构建一致。
  *
  * 信任链（三道，缺一不可）：
  *   1. 路径形状：tarball 必须落在 `releases/*.tgz`，且拼在固定 CDN 前缀之后——
  *      index.json 里写别的 URL 不会被采信；
  *   2. sha256：与 index.json 记的哈希逐字节比对（防截断/损坏/中间人换包）；
  *   3. 产物自证：解开 tarball 读 package/package.json，名字与版本必须与预期一致。
- * 说明：第 2 道不防「CDN 与 index.json 一起被换」，那需要独立签名密钥；
- * 现在的定位是「防损坏与防单点替换」，写进 docs/API-CONTRACT.md §7 如实标注。
+ * 说明：第 2 道不防「清单与产物一起被换」，那需要独立签名密钥；
+ * 现在的定位是「防损坏与防单点替换」，写进 docs/API-CONTRACT.md §2.9 如实标注。
  */
 
 import { Buffer } from 'node:buffer'
@@ -111,6 +120,17 @@ export function normalizeEntry(raw) {
     bytes: Number.isSafeInteger(raw.bytes) && raw.bytes > 0 ? raw.bytes : null,
     releasedAt: typeof raw.releasedAt === 'string' ? raw.releasedAt : null
   }
+}
+
+/** 从当前版本推三个「常规递进方向」的候选版本：下一个补丁 / 下一个次版本 / 下一个主版本。 */
+export function nextCandidates(current) {
+  const parsed = parseVersion(current)
+  if (parsed === null) return []
+  return [
+    `${parsed.major}.${parsed.minor}.${parsed.patch + 1}`,
+    `${parsed.major}.${parsed.minor + 1}.0`,
+    `${parsed.major + 1}.0.0`
+  ]
 }
 
 /**
@@ -228,9 +248,21 @@ async function getBytes(fetchImpl, url, timeoutMs) {
   }
 }
 
-/** 三个候选源，按「本机实测可达性」排序；每个都如实记录自己为什么失败。 */
+/** 三个候选源，按「新鲜度」排序；每个都如实记录自己为什么失败。 */
 function buildSources() {
   return [
+    {
+      id: 'github-release',
+      label: 'GitHub Releases API',
+      async read(fetchImpl) {
+        const res = await getJson(fetchImpl, GITHUB_RELEASE_API, METADATA_TIMEOUT_MS)
+        if (res.ok !== true) return res
+        const tag = typeof res.raw?.tag_name === 'string' ? res.raw.tag_name : ''
+        const version = parseVersion(tag)
+        if (version === null) return { ok: false, reason: 'Release 的 tag_name 不是可解析的版本号' }
+        return { ok: true, version: tag.trim().replace(/^v/, ''), tag, entryFromTag: true }
+      }
+    },
     {
       id: 'jsdelivr-tags',
       label: `jsDelivr Data API（${MARKET_REPO} 标签列表）`,
@@ -253,21 +285,8 @@ function buildSources() {
         if (res.ok !== true) return res
         const index = readIndex(res.raw)
         if (index === null || index.latest === null) return { ok: false, reason: 'index.json 里没有可用版本' }
-        // 分支引用在 CDN 上是缓存 12 小时的：这条路的版本号可能滞后，
-        // 所以只当它自己给出条目时使用，且排在标签列表之后。
+        // 分支引用在 CDN 上是缓存 12 小时的：这条路的版本号会滞后，所以排在标签列表之后。
         return { ok: true, version: index.latest.version, tag: index.latest.tag, entry: index.latest, entryFromTag: false }
-      }
-    },
-    {
-      id: 'github-release',
-      label: 'GitHub Releases API',
-      async read(fetchImpl) {
-        const res = await getJson(fetchImpl, GITHUB_RELEASE_API, METADATA_TIMEOUT_MS)
-        if (res.ok !== true) return res
-        const tag = typeof res.raw?.tag_name === 'string' ? res.raw.tag_name : ''
-        const version = parseVersion(tag)
-        if (version === null) return { ok: false, reason: 'Release 的 tag_name 不是可解析的版本号' }
-        return { ok: true, version: tag.trim().replace(/^v/, ''), tag, entryFromTag: true }
       }
     }
   ]
@@ -344,12 +363,43 @@ export function createSelfUpdater(options = {}) {
     }
 
     if (candidates.length === 0) {
+      // 列表源全都不可用；下面仍会试标签探测（任意标签是按需取的，可能只有它通），
+      // 所以这里只记日志，是否算失败由 best 决定。
+      logger.warn?.(`[${MARKET_PACKAGE}] 三个列表源都没给出可用清单：${attempts.map((attempt) => `${attempt.label}：${attempt.reason}`).join('；')}`)
+    }
+
+    // 取「能拿到清单的最高版本」：不同源的缓存新鲜度不一致，取最高的那个才不会漏掉更新。
+    let best = null
+    for (const candidate of candidates) {
+      if (best === null || compareVersions(candidate.entry.version, best.entry.version) === 1) best = candidate
+    }
+
+    // 两个列表源都会滞后（实测：Data API 的版本列表一小时后仍只有旧版本；@main 的清单被 CDN
+    // 缓存 12 小时），而**任意标签是按需取的**——刚推完标签 `@v<tag>/…` 立刻就是 200。
+    // 所以列表都说「没有更高版本」时，按常规递进方向探三个候选标签：命中即确实有新版本，
+    // 而且那一版的清单就在同一个标签里。有界（最多 3 次）、确定性，不是盲目猜版本。
+    if (best === null || current === null || !isNewer(best.entry.version, current)) {
+      for (const candidateVersion of current === null ? [] : nextCandidates(current)) {
+        if (best !== null && !isNewer(candidateVersion, best.entry.version)) continue
+        const probe = await entryForTag(fetchImpl, `v${candidateVersion}`, candidateVersion, null)
+        if (probe.ok !== true) {
+          attempts.push({ id: 'tag-probe', label: `标签 v${candidateVersion} 的 releases/index.json`, ok: false, reason: probe.reason })
+          continue
+        }
+        attempts.push({ id: 'tag-probe', label: `标签 v${candidateVersion} 的 releases/index.json`, ok: true, reason: `v${candidateVersion}` })
+        candidates.push({ source: { id: 'tag-probe', label: `标签探测（v${candidateVersion}）` }, entry: probe.entry })
+        best = { source: { id: 'tag-probe' }, entry: probe.entry }
+        break
+      }
+    }
+
+    if (best === null) {
       const detail = attempts.map((attempt) => `${attempt.label}：${attempt.reason}`).join('；')
       logger.warn?.(`[${MARKET_PACKAGE}] 自更新检查失败：${detail === '' ? '没有可用源' : detail}`)
       const value = {
         ok: false,
         code: 'self-update-unavailable',
-        message: '三个更新源都没能给出可用的版本清单。',
+        message: '更新源与标签探测都没能给出可用的版本清单。',
         hint: '这台机器可能访问不了 jsDelivr 与 GitHub；可在终端用 dsh plugin add 手动升级。',
         attempts
       }
@@ -357,11 +407,6 @@ export function createSelfUpdater(options = {}) {
       return value
     }
 
-    // 取「能拿到清单的最高版本」：不同源的缓存新鲜度不一致，取最高的那个才不会漏掉更新。
-    let best = candidates[0]
-    for (const candidate of candidates) {
-      if (compareVersions(candidate.entry.version, best.entry.version) === 1) best = candidate
-    }
     const entry = best.entry
     const updateAvailable = current === null ? true : isNewer(entry.version, current)
     const url = entry.tarball === null ? null : `${CDN_BASE}@${encodeURIComponent(entry.tag)}/${entry.tarball}`
@@ -389,17 +434,22 @@ export function createSelfUpdater(options = {}) {
   }
 
   /**
-   * 同一份 tarball 的候选地址。标签地址是规范的那一个（内容不可变、缓存永久），
-   * 但标签可能还没被 CDN 索引（实测：刚推完标签 `@v1.1.0/…` 会 404 一阵），
-   * 那时用 main 分支上的同一路径顶上——**内容由 sha256 负责**，从哪条路取不影响安全性。
+   * 同一份 tarball 的候选地址，按顺序试：
+   *   1. `@<tag>/releases/<file>.tgz` —— CDN 上的规范地址（内容不可变、缓存永久）；
+   *   2. `@main/releases/<file>.tgz` —— 标签还没被 CDN 索引时顶上（实测会 404 一阵）；
+   *   3. GitHub Release 附件 —— 两条 CDN 路都不通时用；附件名是发布流程的约定（`<name>-<version>.tgz`）。
+   * 因为内容由 sha256 与产物自证负责，从哪条路取都不影响安全性。
    */
   function tarballUrls(entry) {
     if (typeof entry.tarball !== 'string' || entry.tarball === '') return []
     const relative = entry.tarball.split('/').map((segment) => encodeURIComponent(segment)).join('/')
     const tag = typeof entry.latestTag === 'string' && entry.latestTag !== '' ? entry.latestTag : `v${entry.latest}`
-    const urls = [`${CDN_BASE}@${encodeURIComponent(tag)}/${relative}`]
-    urls.push(`${CDN_BASE}@main/${relative}`)
-    return [...new Set(urls)]
+    const asset = `${MARKET_PACKAGE}-${entry.latest}.tgz`
+    return [...new Set([
+      `${CDN_BASE}@${encodeURIComponent(tag)}/${relative}`,
+      `${CDN_BASE}@main/${relative}`,
+      `https://github.com/${MARKET_REPO}/releases/download/${encodeURIComponent(tag)}/${encodeURIComponent(asset)}`
+    ])]
   }
 
   /**

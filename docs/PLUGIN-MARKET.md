@@ -139,8 +139,8 @@ DeepSeek Harness 的插件就是 Cordis 插件，Web GUI 的插件还必须额�
 - **自更新的信任锚是 CDN 上的那份清单，不是独立签名**：路径形状 + `sha256` + 产物自证三道校验
   能挡住损坏、截断与单点替换，但挡不住「CDN 与 `index.json` 一起被换」。要有那个能力就得引入
   独立签名密钥（本次不做，已写进 [API-CONTRACT §2.9](API-CONTRACT.md) 而不是含糊过去）。
-- **自更新通道依赖仓库保持 public**：转 private 后 jsDelivr 读不到文件，按钮会变成
-  「更新通道没有回应」；同时别人也装不上这个插件（Release 附件要鉴权）。
+- **自更新通道依赖仓库保持 public**：转 private 后 jsDelivr 读不到文件、GitHub API 对未鉴权请求回 404，
+  按钮会变成「更新通道没有回应」；同时别人也装不上这个插件（Release 附件要鉴权）。
 - **`verify/ui-check.ps1`（真实浏览器）不在发布门禁里**：它要起宿主进程 + headless Edge，
   慢且依赖本机有浏览器。它作为「改客户端半之后手动跑一次」的步骤写进了
   [RELEASING §4.5](RELEASING.md)；门禁里跑的是它的离线部分（文案/动效不变量）。
@@ -211,7 +211,8 @@ REPORT 的「工具缺陷与修正」一节——验收报告承认自己的测�
 降到 `1.0.9`（低于最新标签），于是新起的 scratch 宿主会认为自己旧了，然后：
 
 1. `GET /plugin-market/self-update` → `updateAvailable:true`、`installable:true`、带 `url`/`sha256`；
-2. `POST`（走在已鉴权会话上）→ **真的从 jsDelivr 下载 1.1.x 的 tarball**、按清单校验 sha256、
+2. `POST`（走在已鉴权会话上）→ **真的下载 1.1.x 的 tarball**（`@<tag>` / `@main` / Release 附件三条路依次试）、
+   按清单校验 sha256、
    解开 tarball 自证 `dsh-plugin-market@<version>`、写盘、再交给宿主 `pluginManager.installBundle`；
 3. 核对 scratch profile 的 `dependencies['dsh-plugin-market']` 已经变成指向下载物的 `file:` ——
    证明 pnpm 真的装了，而不是接口回了个 200；
@@ -227,6 +228,8 @@ REPORT 的「工具缺陷与修正」一节——验收报告承认自己的测�
 - 官方 URL 兜底最坏 30s（只在两个 npm 源都失败时才会走到）。
 - 动效只做了「计算样式层面」的断言（动画名、填充模式、延迟、reduced-motion 开关）：
   具体某一帧的观感、以及滚动中的合成性能没有自动化测量，仍靠人看截图。
-- **CDN 索引延迟只能容纳、不能消除**：刚发完版的那几分钟里，新标签可能既不在版本列表里
-  也没被标签路径索引，此时若 `@main` 的缓存也还旧，检查结果会晚一拍（显示「已是最新」而不是
-  报错）。这不是缺陷而是源的固有性质，因此不承诺「发布后立刻可见」。
+- **列表源的滞后只能「容纳 + 兜底」，不能根除**：`@main` 的分支清单被 CDN 缓存 12 小时、
+  Data API 的版本列表数小时不更新（都实测过）。v1.1.2 起加了**标签探测**兜底
+  （任意标签是按需取的，所以能追上刚发布的版本），并把最权威的 GitHub API 提到第一源；
+  但若三个列表源与三个探测标签同时不可用（例如整机断网），检查仍会失败并如实报错，
+  而不是编一个版本号出来。

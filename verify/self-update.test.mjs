@@ -213,27 +213,44 @@ await checkAsync('当前版本等于最新：updateAvailable=false（不提示�
   assert.equal(result.installable, false)
 })
 
-await checkAsync('第一个源挂了就用第二个，且如实记下原因', async () => {
+await checkAsync('第一个源不可用时继续问下一个，且如实记下每个源的原因', async () => {
   const fetchImpl = fakeFetch([
+    ['api.github.com', { ok: false, status: 403, text: async () => '{"message":"API rate limit exceeded"}' }],
     ['data.jsdelivr.com', { ok: false, status: 503, text: async () => '' }],
-    ['cdn.jsdelivr.net/gh/Winnie-0721/dsh-plugin-market@main/releases/index.json', jsonResponse(REPO_INDEX('1.1.0'))],
+    ['@main/releases/index.json', jsonResponse(REPO_INDEX('1.1.0'))],
   ])
   const updater = createSelfUpdater({ fetchImpl, current: '1.0.0', logger: { warn() {} } })
   const result = await updater.check({ force: true })
   assert.equal(result.ok, true)
   assert.equal(result.channel, 'jsdelivr-index')
-  assert.equal(result.attempts[0].ok, false)
-  assert.match(result.attempts[0].reason, /HTTP 503/)
+  assert.ok(result.attempts.some((attempt) => /403/.test(attempt.reason)), 'GitHub 限流要留记录')
+  assert.ok(result.attempts.some((attempt) => /503/.test(attempt.reason)), '镜像 503 也要留记录')
 })
 
-await checkAsync('三个源都挂了：如实报不可用，并带三条尝试记录', async () => {
+await checkAsync('第一个源就给出更高版本时早退出，不再问其余源', async () => {
+  const fetchImpl = fakeFetch([
+    ['api.github.com', jsonResponse({ tag_name: 'v1.1.0' })],
+    ['releases/index.json', jsonResponse(REPO_INDEX('1.1.0'))],
+    ['data.jsdelivr.com', jsonResponse({ versions: [{ version: '9.9.9' }] })],
+  ])
+  const updater = createSelfUpdater({ fetchImpl, current: '1.0.0', logger: { warn() {} } })
+  const result = await updater.check({ force: true })
+  assert.equal(result.latest, '1.1.0')
+  assert.equal(result.channel, 'github-release')
+  assert.equal(fetchImpl.calls.some((url) => url.includes('data.jsdelivr.com')), false, '已有明确答案就不该再问 jsDelivr')
+})
+
+await checkAsync('三个源都挂了：如实报不可用，并带三条源记录（外加有界的标签探测）', async () => {
   const fetchImpl = fakeFetch([])
   const updater = createSelfUpdater({ fetchImpl, current: '1.0.0', logger: { warn() {} } })
   const result = await updater.check({ force: true })
   assert.equal(result.ok, false)
   assert.equal(result.code, 'self-update-unavailable')
-  assert.equal(result.attempts.length, 3)
-  assert.ok(result.attempts.every((attempt) => attempt.ok === false))
+  const sourceAttempts = result.attempts.filter((attempt) => attempt.id !== 'tag-probe')
+  assert.equal(sourceAttempts.length, 3, '三个列表源各留一条记录')
+  assert.ok(sourceAttempts.every((attempt) => attempt.ok === false))
+  // 列表全挂时仍会探一次标签（任意标签是按需取的，可能只有它通），但必须有界。
+  assert.equal(result.attempts.filter((attempt) => attempt.id === 'tag-probe').length, 3)
 })
 
 await checkAsync('10 分钟内复用缓存，不再打网络', async () => {
@@ -279,16 +296,17 @@ await checkAsync('多个源都给出条目时取最高的那一个（缓存新�
   assert.equal(result.updateAvailable, true)
 })
 
-await checkAsync('已经有一个明确更高的答案就早退出（不为一次点击问遍所有源）', async () => {
+await checkAsync('GitHub 限流时结论不受影响（它只是一个源，不是前提）', async () => {
   const fetchImpl = fakeFetch([
+    ['api.github.com', { ok: false, status: 403, text: async () => '{"message":"API rate limit exceeded"}' }],
     ['data.jsdelivr.com', jsonResponse({ versions: [{ version: '1.1.0' }] })],
     ['@v1.1.0/releases/index.json', jsonResponse(REPO_INDEX('1.1.0'))],
-    ['api.github.com', jsonResponse({ tag_name: 'v9.9.9' })],
   ])
   const updater = createSelfUpdater({ fetchImpl, current: '1.0.0', logger: { warn() {} } })
   const result = await updater.check({ force: true })
+  assert.equal(result.ok, true)
   assert.equal(result.latest, '1.1.0')
-  assert.equal(fetchImpl.calls.some((url) => url.includes('api.github.com')), false, '已知有更新的情况下不该再去问 GitHub')
+  assert.equal(result.channel, 'jsdelivr-tags')
 })
 
 // ── 5. apply()：拒绝路径绝不安装 ─────────────────────────────────────
@@ -460,6 +478,74 @@ await checkAsync('拿到了字节但哈希不符 = 硬失败，绝不换另一�
     assert.equal(result.code, 'self-update-integrity')
     assert.equal(manager.calls.length, 0, '字节都拿到了还哈希不符，是篡改信号，不能换个来源就放过')
     assert.equal(fetchImpl.calls.some((url) => url.includes('@main/releases/dsh-plugin-market-1.1.0.tgz')), false)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+await checkAsync('列表源全都滞后时按常规递进探测标签（这才能追上刚发布的版本）', async () => {
+  // 实测：Data API 的版本列表一小时后仍只有旧版本，@main 的清单被 CDN 缓存 12 小时，
+  // 而任意标签是按需取的 —— 所以「列表都说没有更新」时还要探一次下一个补丁标签。
+  const fetchImpl = fakeFetch([
+    ['data.jsdelivr.com', jsonResponse({ versions: [{ version: '1.0.0' }] })],
+    ['@v1.0.0/releases/index.json', jsonResponse(REPO_INDEX('1.0.0'))],
+    ['@main/releases/index.json', jsonResponse(REPO_INDEX('1.0.0'))],
+    ['@v1.0.1/releases/index.json', jsonResponse(REPO_INDEX('1.0.1'))],
+  ])
+  const updater = createSelfUpdater({ fetchImpl, current: '1.0.0', logger: { warn() {} } })
+  const result = await updater.check({ force: true })
+  assert.equal(result.ok, true)
+  assert.equal(result.latest, '1.0.1', '列表滞后时也要能发现刚发布的补丁版本')
+  assert.equal(result.updateAvailable, true)
+  assert.equal(result.channel, 'tag-probe')
+  assert.ok(fetchImpl.calls.some((url) => url.includes('@v1.0.1/releases/index.json')))
+})
+
+await checkAsync('标签探测是有界的：三个候选都没命中就如实说没有更新', async () => {
+  const fetchImpl = fakeFetch([
+    ['data.jsdelivr.com', jsonResponse({ versions: [{ version: '1.0.0' }] })],
+    ['@v1.0.0/releases/index.json', jsonResponse(REPO_INDEX('1.0.0'))],
+    ['@main/releases/index.json', jsonResponse(REPO_INDEX('1.0.0'))],
+  ])
+  const updater = createSelfUpdater({ fetchImpl, current: '1.0.0', logger: { warn() {} } })
+  const result = await updater.check({ force: true })
+  assert.equal(result.ok, true)
+  assert.equal(result.updateAvailable, false)
+  const probes = fetchImpl.calls.filter((url) => /@v1\.0\.1|@v1\.1\.0|@v2\.0\.0/.test(url))
+  assert.equal(probes.length, 3, `应当恰好探三个候选，实际 ${probes.length}：${probes.join(' ')}`)
+})
+
+await checkAsync('已经有一个明确更高的答案时不探测（早退出优先）', async () => {
+  const fetchImpl = fakeFetch([
+    ['data.jsdelivr.com', jsonResponse({ versions: [{ version: '1.5.0' }] })],
+    ['releases/index.json', jsonResponse(REPO_INDEX('1.5.0'))],
+    ['@v1.0.1/releases/index.json', jsonResponse(REPO_INDEX('1.0.1'))],
+  ])
+  const updater = createSelfUpdater({ fetchImpl, current: '1.0.0', logger: { warn() {} } })
+  const result = await updater.check({ force: true })
+  assert.equal(result.latest, '1.5.0')
+  assert.equal(fetchImpl.calls.some((url) => url.includes('@v1.0.1/')), false, '已知更高版本时不该再去探标签')
+})
+
+await checkAsync('两条 CDN 路都不通时用 GitHub Release 附件（第三条路）', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'dshpm-selfupdate-asset-'))
+  try {
+    const fetchImpl = fakeFetch([
+      ['api.github.com', jsonResponse({ tag_name: 'v1.1.0' })],
+      ['releases/index.json', jsonResponse({
+        latest: { version: '1.1.0', tag: 'v1.1.0', tarball: 'releases/dsh-plugin-market-1.1.0.tgz', sha256: TARBALL_SHA, bytes: TARBALL.length },
+        versions: [],
+      })],
+      ['cdn.jsdelivr.net', { ok: false, status: 404, text: async () => 'not found' }],
+      ['github.com/Winnie-0721/dsh-plugin-market/releases/download', { ok: true, status: 200, arrayBuffer: async () => TARBALL }],
+    ])
+    const manager = fakeManager()
+    const updater = createSelfUpdater({ fetchImpl, current: '1.0.0', manager, downloadDir: dir, cacheMs: 0, logger: { warn() {} } })
+    const result = await updater.apply()
+    assert.equal(result.ok, true, 'Release 附件这条路要能顶上')
+    assert.equal(result.to, '1.1.0')
+    assert.equal(manager.calls.length, 1)
+    assert.ok(fetchImpl.calls.some((url) => url.includes('releases/download/v1.1.0/dsh-plugin-market-1.1.0.tgz')))
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }

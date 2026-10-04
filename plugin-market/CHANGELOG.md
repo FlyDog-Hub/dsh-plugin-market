@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.1.2
+
+把「刚发布的版本看不见」和一条写错的根因一起修掉。
+
+- **列表源会滞后，于是加了标签探测**。实测（2026-10-04）：发布一小时后，jsDelivr 的版本列表
+  仍然只有旧版本，`@main` 的 `releases/index.json` 也被 CDN 缓存 12 小时——两个列表都说
+  「没有更新」，而真正的最新媒体早就在标签上了。现在列表都给不出更高版本时，按
+  `MAJOR.MINOR.PATCH` 的常规递进探三个候选标签（下一个补丁 / 次版本 / 主版本）；
+  **任意标签是按需取的**（刚推完 `@v<tag>/…` 立刻 200），所以这一层能追上滞后。有界：最多 3 次请求。
+- **源顺序改为按新鲜度**：GitHub Releases API 提到第一源（权威且最新），jsDelivr 两条居后。
+  被匿名限流（403，60 次/小时/IP）时**只是这个源失败**，继续问下一个；10 分钟缓存把点击量封在 ~6 次/小时。
+- **下载多了第三条路**：`@<tag>` → `@main` → GitHub Release 附件。前两条覆盖 CDN 的标签索引延迟，
+  第三条在 CDN 不可达时顶上。仍然只有传输层失败才换路，拿到字节后哈希不符直接硬失败。
+- **更正一条写错的根因**（这条要单独说）。1.1.0 的更新日志里写着「本机直连 `api.github.com` 的真实路径
+  一律 403（GFW 拦截）、`github.com` 被重置，需要 Clash 代理」。**这是错的**，两个原因叠在一起：
+  当时仓库还是 private（未鉴权取 `releases/latest` 就是 404），而匿名限流返回的 403 被误读成封锁。
+  2026-10-04 实测：API 200（`X-RateLimit-Remaining: 47/60`）、`github.com` 200、
+  Release 附件直连 200（2.7s；走代理 737ms），下载字节的 sha256 与本地构建一致；
+  `git ls-remote`（842ms）与 `gh` 也不需要代理。**代理不是必须的，只是更快/更稳**。
+  文档里所有相关表述（`docs/RELEASING.md` §3/§4.4、两份 README）已一并更正。
+
 ## 1.1.1
 
 修两处只有**真的发一次版**才会暴露的问题（发布 v1.1.0 后立刻实测到的）。
@@ -37,8 +58,11 @@
 **自更新通道（`GET`/`POST /plugin-market/self-update`）**
 
 - 源顺序：jsDelivr 标签列表 → jsDelivr main 分支 `releases/index.json` → GitHub Releases API。
-  为什么不是 GitHub 优先：本机直连 `api.github.com` 的真实路径一律 403、`github.com` 直接重置连接，
-  而宿主进程只认 `HTTP(S)_PROXY`（桌面版通常不带）；jsDelivr 直连可用。详见 `docs/RELEASING.md` §4.4。
+  ~~为什么不是 GitHub 优先：本机直连 `api.github.com` 的真实路径一律 403、`github.com` 直接重置连接，
+  而宿主进程只认 `HTTP(S)_PROXY`（桌面版通常不带）；jsDelivr 直连可用。~~
+  **这段根因写错了，已在 1.1.2 更正**：当时是 private 仓库导致的 404，加上匿名限流的 403 被误读；
+  GitHub 直连是可用的（API / 网页 / Release 附件都通），1.1.2 起 GitHub API 反而排到第一源。
+  详见 `docs/RELEASING.md` §4.4。
 - 三道校验：产物路径必须是 `releases/*.tgz` 且拼在固定 CDN 前缀后 → 字节 `sha256` 必须与清单一致
   → 解开 tarball 读 `package/package.json`，包名与版本必须自证一致。**任何一道不过都不安装**，
   并且有测试证明「拒绝时根本没有调用 `pluginManager.installBundle`」。
