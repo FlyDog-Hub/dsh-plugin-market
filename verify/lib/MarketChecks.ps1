@@ -96,11 +96,20 @@ function Invoke-MarketRouteChecks {
   }
   $pn = Get-PropOrNull (Get-PropOrNull $j 'plugin') 'name'
   $pv = Get-PropOrNull (Get-PropOrNull $j 'plugin') 'version'
+  # 期望版本从包清单读，不写死：写死会在每次发版后把「产品正确上报了当前版本」判成失败
+  # （1.1.0 那一轮就是这样把 1.0.0 判成 fail 的）。契约要求的是「等于 package.json 里的版本」。
+  $expectedVersion = ''
+  try {
+    $manifestPath = Join-Path (Get-RepoRoot) 'plugin-market\package.json'
+    if (Test-Path -LiteralPath $manifestPath) {
+      $expectedVersion = [string](Get-Content $manifestPath -Raw | ConvertFrom-Json).version
+    }
+  } catch { $expectedVersion = '' }
   $mgrAvail = Get-PropOrNull (Get-PropOrNull $j 'manager') 'available'
   $hostDsh = Get-PropOrNull (Get-PropOrNull $j 'host') 'dsh'
   Emit 'A4a' 'GET /status 返回 ok:true 且字段齐全（catalog 允许 null，§5.4/§2.1）' "GET $BaseUrl/status" `
-    'HTTP 200；ok:true；含 plugin/host/manager/catalog 四个字段；Content-Type: application/json；plugin.name=dsh-plugin-market；plugin.version=1.0.0；catalog 为 null 或含 source/count/updated/fetchedAt/stale 的对象' `
-    (($r.Status -eq 200) -and ($ok -eq $true) -and ($missing.Count -eq 0) -and $catPresent -and $catInnerOk -and ($ct -match 'application/json') -and ($pn -eq 'dsh-plugin-market') -and ($pv -eq '1.0.0')) `
+    "HTTP 200；ok:true；含 plugin/host/manager/catalog 四个字段；Content-Type: application/json；plugin.name=dsh-plugin-market；plugin.version 等于 package.json 的 version（当前 $expectedVersion）；catalog 为 null 或含 source/count/updated/fetchedAt/stale 的对象" `
+    (($r.Status -eq 200) -and ($ok -eq $true) -and ($missing.Count -eq 0) -and $catPresent -and $catInnerOk -and ($ct -match 'application/json') -and ($pn -eq 'dsh-plugin-market') -and ($expectedVersion -ne '') -and ($pv -eq $expectedVersion)) `
     "status=$($r.Status) ok=$ok 缺字段=[$($missing -join ',')] catalog=$catState $catInnerMsg plugin.name=$pn plugin.version=$pv manager.available=$mgrAvail host.dsh=$hostDsh contentType=$ct cacheControl=$cc2" `
     $r.Body.Substring(0, [Math]::Min(900, $r.Body.Length))
 

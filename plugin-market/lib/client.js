@@ -240,6 +240,7 @@ window.__ModuleLoader__.load({
         "notice.selfFound": "插件市场有新版本 v{version}：点「更新到 {version}」安装。",
         "notice.selfCurrent": "插件市场已是最新（v{version}）。",
         "notice.selfUpdated": "插件市场已更新到 v{version}；重启 DSH 后新代码才生效。",
+        "notice.selfNeedsRestart": "这个按钮要新的宿主半：请重启一次 DSH 再试（客户端半已经生效，宿主半还在进程里缓存着）。",
         "err.self-update-unavailable.title": "更新通道没有回应",
         "err.self-update-unavailable.why": "jsDelivr 与 GitHub 三个源都没给出可用版本，这台机器可能访问不了它们。",
         "err.self-update-unavailable.next": "稍后重试；也可在终端用 dsh plugin add <Release 附件地址> 手动升级。",
@@ -464,6 +465,7 @@ window.__ModuleLoader__.load({
         "notice.selfFound": "Plugin market v{version} is available: click “Update to {version}”.",
         "notice.selfCurrent": "The plugin market is up to date (v{version}).",
         "notice.selfUpdated": "The plugin market was updated to v{version}; the new code applies after DSH restarts.",
+        "notice.selfNeedsRestart": "This button needs the new Host half: restart DSH once and try again (the client half is already live; the Host half is still cached in the running process).",
         "err.self-update-unavailable.title": "No update channel answered",
         "err.self-update-unavailable.why": "None of the jsDelivr and GitHub sources returned a usable version; this machine may not reach them.",
         "err.self-update-unavailable.next": "Try again later, or upgrade in a terminal with dsh plugin add <release asset URL>.",
@@ -2452,7 +2454,10 @@ window.__ModuleLoader__.load({
         }).catch(function (error) {
           if (!mountedRef.current) return;
           setSelfUpdate({ phase: "error", data: null, error: error });
-          setNotice({ kind: "error", error: error });
+          // 宿主半还是旧版本时这个端点根本不存在（404/405）。这句话比「请求没有完成」有用得多：
+          // 客户端半是热更新的，所以「按钮出现了但宿主没这接口」是升级过程中的正常中间态。
+          var staleHost = error && (error.code === "not-found" || error.code === "method-not-allowed");
+          setNotice(staleHost ? { kind: "warn", text: t("notice.selfNeedsRestart") } : { kind: "error", error: error });
         });
       }
 
