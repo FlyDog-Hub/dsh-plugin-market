@@ -2,18 +2,28 @@
     "name":  "dsh-plugin-market",
     "channel":  "jsdelivr",
     "repo":  "Winnie-0721/dsh-plugin-market",
-    "updatedAt":  "2026-10-04T10:16:24Z",
+    "updatedAt":  "2026-10-04T10:21:04Z",
     "latest":  {
-                   "version":  "1.1.1",
-                   "tag":  "v1.1.1",
-                   "versionCode":  10101,
-                   "build":  "+23.389a43d",
-                   "tarball":  "releases/dsh-plugin-market-1.1.1.tgz",
-                   "sha256":  "f35875944174d456ce168064bb1b43f981f330a048febb843593eb7a22d12d2a",
-                   "bytes":  443096,
-                   "releasedAt":  "2026-10-04T10:16:24Z"
+                   "version":  "1.1.2",
+                   "tag":  "v1.1.2",
+                   "versionCode":  10102,
+                   "build":  "+25.3204c30",
+                   "tarball":  "releases/dsh-plugin-market-1.1.2.tgz",
+                   "sha256":  "65b7be866e1067bf1d755a85d7ef69b61794b957a36ee02f242f4507feed1fd9",
+                   "bytes":  445346,
+                   "releasedAt":  "2026-10-04T10:21:04Z"
                },
     "versions":  [
+                     {
+                         "version":  "1.1.2",
+                         "tag":  "v1.1.2",
+                         "versionCode":  10102,
+                         "build":  "+25.3204c30",
+                         "tarball":  "releases/dsh-plugin-market-1.1.2.tgz",
+                         "sha256":  "65b7be866e1067bf1d755a85d7ef69b61794b957a36ee02f242f4507feed1fd9",
+                         "bytes":  445346,
+                         "releasedAt":  "2026-10-04T10:21:04Z"
+                     },
                      {
                          "version":  "1.1.1",
                          "tag":  "v1.1.1",
