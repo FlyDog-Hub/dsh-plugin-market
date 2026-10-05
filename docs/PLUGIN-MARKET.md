@@ -203,9 +203,10 @@ REPORT 的「工具缺陷与修正」一节——验收报告承认自己的测�
   再切成 `reduce` 证明 `animation-name` 变成 `none` 而列表行仍然在（内容不会消失）；
 - 页面控制台无插件错误。
 
-结论：**24/24 通过**（v1.1.3 加了 5 条布局断言后为 **29/29**），截图落在 `verify/logs/ui/`
+结论：**24/24 通过**（v1.1.3 加了 5 条布局断言后为 **29/29**；修「点更新插件没反馈」时再加 3 条——
+点完必须有结果回执、面板必须在视区里、发现页 + 520px 矮视口下同样成立——为 **32/32**），截图落在 `verify/logs/ui/`
 （`market-updates-open.png`、`market-header-zoom.png`、`market-header-closed.png`、
-`market-reduced-motion.png`、`market-short-viewport.png`）。
+`market-reduced-motion.png`、`market-short-viewport.png`、`market-updates-short-viewport.png`）。
 顺带记一个踩点：headless Chromium **默认就是 `prefers-reduced-motion: reduce`**，
 不显式钉 `no-preference` 的话，「动效生效」那组断言测的是一条永远关着动画的路径。
 

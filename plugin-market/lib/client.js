@@ -221,6 +221,7 @@ window.__ModuleLoader__.load({
         "action.updateSelf": "更新到 {version}",
         "action.updatingSelf": "正在更新市场…",
         "action.updates": "更新插件",
+        "action.checkingUpdates": "检查更新中…",
         "self.available": "发现新版本 v{version}",
         "self.linkNote": "安装会把本机的 link: 依赖替换为下载并校验过的本地包；要回到开发目录，再把这个路径 add 回来。",
         "updates.title": "可更新的插件",
@@ -237,6 +238,7 @@ window.__ModuleLoader__.load({
         "updates.noCatalog.body": "要判断有没有新版本，得先把目录读进来：点「刷新目录」后重试。",
         "updates.failed": "{name} 更新失败",
         "notice.updatesFound": "发现 {count} 个插件有新版本，点「更新插件」逐个确认。",
+        "notice.updatesNone": "已检查 {installed} 个插件：全部都是最新版本。",
         "notice.selfFound": "插件市场有新版本 v{version}：点「更新到 {version}」安装。",
         "notice.selfCurrent": "插件市场已是最新（v{version}）。",
         "notice.selfUpdated": "插件市场已更新到 v{version}；重启 DSH 后新代码才生效。",
@@ -446,6 +448,7 @@ window.__ModuleLoader__.load({
         "action.updateSelf": "Update to {version}",
         "action.updatingSelf": "Updating the market…",
         "action.updates": "Plugin updates",
+        "action.checkingUpdates": "Checking…",
         "self.available": "New version v{version} available",
         "self.linkNote": "Installing replaces this machine's link: dependency with the verified local package; add the source path back to return to it.",
         "updates.title": "Plugin updates",
@@ -462,6 +465,7 @@ window.__ModuleLoader__.load({
         "updates.noCatalog.body": "Deciding whether a newer version exists needs the catalog: refresh it and try again.",
         "updates.failed": "{name} failed to update",
         "notice.updatesFound": "{count} plugins have a newer version — open Plugin updates to confirm them one by one.",
+        "notice.updatesNone": "Checked {installed} plugins: all of them are up to date.",
         "notice.selfFound": "Plugin market v{version} is available: click “Update to {version}”.",
         "notice.selfCurrent": "The plugin market is up to date (v{version}).",
         "notice.selfUpdated": "The plugin market was updated to v{version}; the new code applies after DSH restarts.",
@@ -1990,7 +1994,8 @@ window.__ModuleLoader__.load({
         className: "dshpm-updatesPanel",
         "data-open": open ? "true" : "false",
         "aria-hidden": open ? "false" : "true",
-        "aria-label": t("updates.title")
+        "aria-label": t("updates.title"),
+        ref: props.panelRef
       },
         el("div", { className: "dshpm-drawerHead" },
           el("span", { className: "dshpm-drawerIcon" }, el(IconLayers, { size: 15 })),
@@ -2093,6 +2098,8 @@ window.__ModuleLoader__.load({
       var drawerState = React.useState(false);
       var drawerOpen = drawerState[0];
       var setDrawerOpen = drawerState[1];
+      /** 面板排在整张卡片网格**之后**：不滚过去，展开了用户也看不见（像「点了没反应」）。 */
+      var drawerPanelRef = React.useRef(null);
 
       // 抽屉里每一条的更新结果，按包名记：进度与成功/失败都留在原地，不用去翻提示条。
       var updateResultsState = React.useState({});
@@ -2200,7 +2207,13 @@ window.__ModuleLoader__.load({
           });
       }
 
-      function loadInstalled() {
+      /**
+       * options.announce：由头部「更新插件」主动触发时置位——**每次都给一句回执**
+       * （有更新 / 全部最新 / 失败），和「检查市场更新」一个待遇；页面挂载与后台重读
+       * 不置位，免得每次 tick 重读都弹一条提示。
+       */
+      function loadInstalled(options) {
+        var announce = !!(options && options.announce);
         var bag = startRequest("installed");
         setInstalled(function (previous) {
           return { phase: "loading", data: previous.data, error: null };
@@ -2209,6 +2222,14 @@ window.__ModuleLoader__.load({
           if (!isCurrent("installed", bag.token)) return;
           setInstalled({ phase: "ready", data: payload, error: null });
           var count = publishUpdateCount(payload && payload.bundles);
+          if (announce) {
+            announcedRef.current = true;
+            var installedTotal = payload && payload.bundles ? payload.bundles.length : 0;
+            setNotice(count > 0
+              ? { kind: "info", text: t("notice.updatesFound", { count: count }) }
+              : { kind: "success", text: t("notice.updatesNone", { installed: installedTotal }) });
+            return;
+          }
           if (count > 0 && !announcedRef.current) {
             announcedRef.current = true;
             setNotice({ kind: "info", text: t("notice.updatesFound", { count: count }) });
@@ -2219,6 +2240,8 @@ window.__ModuleLoader__.load({
           setInstalled(function (previous) {
             return { phase: "error", data: previous.data, error: error };
           });
+          // 用户主动点的按钮必须有失败回执：静默失败看起来就是「点了没反应」。
+          if (announce) setNotice({ kind: "error", error: error });
         });
       }
 
@@ -2488,15 +2511,35 @@ window.__ModuleLoader__.load({
         });
       }
 
-      /** 打开抽屉时重读一次已安装列表：角标与列表都基于新数据。 */
+      /**
+       * 打开抽屉时重读一次已安装列表：角标与列表都基于新数据。
+       * announce：这次是用户点出来的，**无论有没有更新都要回一句话**——「检查市场更新」
+       * 一直是这么做的，同一个头部的两个按钮不该一个有反馈、一个静默。
+       */
       function openUpdates() {
         setDrawerOpen(true);
-        loadInstalled();
+        loadInstalled({ announce: true });
       }
 
       function closeUpdates() {
         setDrawerOpen(false);
       }
+
+      // 展开后把面板滚进可视区（面板在 DOM 里排在目录网格之后）；用户偏好减少动效时
+      // 直接跳位，不放平滑滚动。
+      React.useEffect(function () {
+        if (!drawerOpen) return undefined;
+        var node = drawerPanelRef.current;
+        if (!node || typeof node.scrollIntoView !== "function") return undefined;
+        var reduce = typeof window !== "undefined" && typeof window.matchMedia === "function"
+          && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        try {
+          node.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "nearest" });
+        } catch (scrollError) {
+          node.scrollIntoView();
+        }
+        return undefined;
+      }, [drawerOpen]);
 
       function toggleDetails(key) {
         setExpanded(function (previous) {
@@ -2557,6 +2600,8 @@ window.__ModuleLoader__.load({
         : null;
       var refreshing = !!job && job.kind === "refresh";
       var busyKey = job ? job.key : null;
+      // 「检查中」只在玩家点开抽屉、重读在途时亮：与「检查市场更新」的 checking 态同款反馈。
+      var updatesBusy = drawerOpen && installed.phase === "loading";
 
       // ── 头部两个按钮与抽屉要用的派生值 ──
       var installedPayload = installed.data || {};
@@ -2606,10 +2651,13 @@ window.__ModuleLoader__.load({
               className: "dshpm-btn dshpm-btn--updates" + (updateCount > 0 ? " dshpm-btn--attention" : ""),
               "aria-haspopup": "dialog",
               "aria-expanded": drawerOpen ? "true" : "false",
+              "aria-busy": updatesBusy ? "true" : "false",
               "data-open": drawerOpen ? "true" : "false",
+              disabled: updatesBusy,
               title: t("updates.title"),
               onClick: function () { if (drawerOpen) closeUpdates(); else openUpdates(); }
-            }, el(IconDownload, { size: 13 }), el("span", null, t("action.updates")),
+            }, updatesBusy ? el(IconSpinner, { size: 13 }) : el(IconDownload, { size: 13 }),
+              el("span", null, updatesBusy ? t("action.checkingUpdates") : t("action.updates")),
               updateCount > 0 ? el("span", { className: "dshpm-count", "data-pop": "true" }, String(updateCount)) : null),
             el("button", {
               type: "button",
@@ -2711,6 +2759,7 @@ window.__ModuleLoader__.load({
           }),
         el(UpdatesDrawer, {
           open: drawerOpen,
+          panelRef: drawerPanelRef,
           state: installed,
           bundles: updateBundles,
           count: updateCount,

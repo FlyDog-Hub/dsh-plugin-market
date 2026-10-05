@@ -211,12 +211,21 @@ try {
   expect('已安装页显示注入的三个 bundle', marketBadge === true)
 
   console.log('\n[4] 展开可更新列表（逐个确认）')
+  // 用户报的「点更新插件没有任何反馈」：先把上一条提示条等没（自动收起 4.6s），
+  // 这样点击后新出现的那条就必然是**本次**的回执，而不是上一次的残留。
+  await waitFor(client, `document.querySelector('.dshpm-notice') === null`, 12000, '上一条提示条已自动收起')
   await evaluate(client, `document.querySelector('.dshpm-btn--updates').click(); true`)
   await waitFor(client, `document.querySelector('.dshpm-updatesPanel[data-open="true"]') !== null`, 8000, '可更新面板展开')
   // 展开是一次 max-height 过渡（340ms），visibility 这种离散属性在中途才翻转：
   // 刚点完就量高度/读 innerText 会读到过渡中途的值，等它稳定下来再断言。
   await waitFor(client, `document.querySelector('.dshpm-updatesPanel').getBoundingClientRect().height > 120`, 8000, '可更新面板展开到最终高度')
   expect('点「更新插件」展开了可更新列表', true)
+  // 反馈一：面板必须滚进可视区——它在 DOM 里排在卡片网格之后，不滚就是「开了也看不见」。
+  await waitFor(client, `(() => { const p = document.querySelector('.dshpm-updatesPanel'); if (!p) return false; const r = p.getBoundingClientRect(); return r.top >= -1 && r.top < window.innerHeight && r.bottom > 0; })()`, 8000, '面板滚进可视区')
+  expect('展开的面板在可视区内（不是开在卡片网格下方几百像素处）', true)
+  // 反馈二：点完必须回一句话。fixture 注入了两个可更新插件，所以文案是确定的。
+  await waitFor(client, `(() => { const n = document.querySelector('.dshpm-notice'); if (!n) return false; return /发现 \\d+ 个插件有新版本|全部都是最新/.test(n.innerText.replace(/\\s+/g, ' ')); })()`, 8000, '点击后提示条给出回执')
+  expect('点「更新插件」后提示条给出结果回执（发现 2 个插件有新版本）', true)
   const panelText = await evaluate(client, `document.querySelector('.dshpm-updatesPanel').innerText`)
   expect('列表里列出两个可更新插件与版本走向', /@fixture\/needs-update/.test(String(panelText)) && /1\.2\.0/.test(String(panelText)) && /@fixture\/second-update/.test(String(panelText)), String(panelText).slice(0, 200))
   const rows = await evaluate(client, `document.querySelectorAll('.dshpm-updatesPanel .dshpm-updateRow:not(.dshpm-updateRow--ghost)').length`)
@@ -245,6 +254,25 @@ try {
   const { writeFileSync } = await import('node:fs')
   writeFileSync(join(shotDir, 'market-header-zoom.png'), Buffer.from(zoom.data, 'base64'))
   console.log(`  · 截图：${join(shotDir, 'market-header-zoom.png')}`)
+
+  console.log('\n[4b] 用户原场景：发现页（长网格）+ 矮视口下点「更新插件」')
+  // 上面那组是在「已安装」页点的，那里内容短、面板本来就在视区里——测不出
+  // 用户报的「点了没反应」。这里复现真实场景：卡片网格把页面撑得很长、视口只有 520px，
+  // 没有 scrollIntoView 的话面板开在几百像素之下，用户看到的就是「什么都没发生」。
+  await evaluate(client, `document.querySelector('.dshpm-drawerClose').click(); true`)
+  await waitFor(client, `document.querySelector('.dshpm-updatesPanel[data-open="false"]') !== null`, 8000, '面板已收起')
+  await evaluate(client, `Array.from(document.querySelectorAll('.dshpm-tab')).find(b => /发现|Discover/.test(b.textContent)).click(); true`)
+  await waitFor(client, `!!document.querySelector('.dshpm-card')`, 30000, '发现页卡片渲染出来（页面变长）')
+  await client.send('Emulation.setDeviceMetricsOverride', { width: 1200, height: 520, deviceScaleFactor: 1, mobile: false })
+  await evaluate(client, `document.querySelector('.dshpm-btn--updates').click(); true`)
+  await waitFor(client, `document.querySelector('.dshpm-updatesPanel[data-open="true"]') !== null`, 8000, '矮视口下面板展开')
+  await waitFor(client, `(() => { const p = document.querySelector('.dshpm-updatesPanel'); if (!p) return false; const r = p.getBoundingClientRect(); return r.top >= -1 && r.top < window.innerHeight && r.bottom > 0; })()`, 8000, '矮视口下面板滚进可视区')
+  expect('发现页 + 520px 视口：面板展开后仍在可视区内（由 scrollIntoView 滚过去）', true)
+  await screenshot(client, join(shotDir, 'market-updates-short-viewport.png'))
+  console.log(`  · 截图：${join(shotDir, 'market-updates-short-viewport.png')}`)
+  // 还原到 [5] 期望的状态：视口回默认、页签回到已安装，面板保持展开交给 [5] 去收。
+  await client.send('Emulation.clearDeviceMetricsOverride')
+  await evaluate(client, `Array.from(document.querySelectorAll('.dshpm-tab')).find(b => /已安装|Installed/.test(b.textContent)).click(); true`)
 
   console.log('\n[5] 收起与自更新按钮的状态文案')
   await evaluate(client, `document.querySelector('.dshpm-drawerClose').click(); true`)

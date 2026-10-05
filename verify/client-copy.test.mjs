@@ -76,9 +76,9 @@ check('词典里除动态前缀外的键都真的被用到（没有僵尸文案�
 check('新增的两组文案职责齐全（自更新 / 可更新列表 / 三个错误码）', () => {
   for (const key of [
     'action.checkSelf', 'action.checkingSelf', 'action.selfCurrent', 'action.updateSelf', 'action.updatingSelf',
-    'action.updates', 'action.recheckSelf',
+    'action.updates', 'action.checkingUpdates', 'action.recheckSelf',
     'updates.title', 'updates.entryBadge', 'updates.hint', 'updates.empty.title', 'updates.empty.body',
-    'notice.selfFound', 'notice.selfCurrent', 'notice.selfUpdated', 'notice.updatesFound',
+    'notice.selfFound', 'notice.selfCurrent', 'notice.selfUpdated', 'notice.updatesFound', 'notice.updatesNone',
     'err.self-update-unavailable.title', 'err.self-update-integrity.title', 'err.self-update-download.title',
   ]) {
     assert.ok(zhKeys.has(key), `缺少文案键 ${key}`)
@@ -163,6 +163,17 @@ check('自更新按钮在文案上区分检查中/已是最新/可更新/更新�
   assert.match(source, /selfPhase === "installing" \? t\("action\.updatingSelf"\)/)
   assert.match(source, /selfAvailable \? t\("action\.updateSelf"/)
   assert.match(source, /selfPhase === "ready" \? t\("action\.selfCurrent"\)/)
+})
+check('「更新插件」与「检查市场更新」同款反馈：忙碌态 + 结果回执 + 展开后滚进视区', () => {
+  // 用户报过「点更新插件没有任何反馈」：面板排在卡片网格之后，展开在视区外，
+  // 且不重读就没有提示条——这三条断言把「点了必须有反应」钉在源码层。
+  assert.match(source, /updatesBusy \? el\(IconSpinner/, '按钮在检查中要转圈')
+  assert.match(source, /updatesBusy \? t\("action\.checkingUpdates"\)/, '按钮在检查中要换文案')
+  assert.match(source, /"aria-busy": updatesBusy \? "true" : "false"/, '按钮要暴露 aria-busy')
+  assert.match(source, /loadInstalled\(\{ announce: true \}\)/, '点按钮要触发带回执的重读')
+  assert.match(source, /t\("notice\.updatesFound"/, '有更新要给回执')
+  assert.match(source, /t\("notice\.updatesNone"/, '没有更新也要给回执')
+  assert.match(source, /scrollIntoView/, '展开后要把面板滚进可视区')
 })
 
 console.log('')
