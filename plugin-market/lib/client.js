@@ -2232,9 +2232,17 @@ window.__ModuleLoader__.load({
       var page = pageState[0];
       var setPage = pageState[1];
 
-      var tickState = React.useState(0);
-      var tick = tickState[0];
-      var setTick = tickState[1];
+      // 两个独立的重读计数器（性能）：写操作只该重读**已安装列表**，刷新目录才该重读**目录**。
+      // 早先这里是一个共享 tick，三个 effect 全挂在它上面——点一次「停用/卸载」会连带触发
+      // /status + /catalog + /installed 三个请求，其中前两个是浪费（status 只在启动时定下来，
+      // catalog 与写操作无关，却要整份重抓 4412 条）。拆开后每个动作只打它真正需要的那一路。
+      var installedTickState = React.useState(0);
+      var installedTick = installedTickState[0];
+      var bumpInstalledTick = installedTickState[1];
+
+      var catalogTickState = React.useState(0);
+      var catalogTick = catalogTickState[0];
+      var bumpCatalogTick = catalogTickState[1];
 
       var jobState = React.useState(null);
       var job = jobState[0];
@@ -2460,9 +2468,12 @@ window.__ModuleLoader__.load({
         });
       }
 
+      // /status 只回 plugin.version 与 manager.available——两者只在启动时定下来，写操作绝不改变。
+      // 因此只在挂载时读一次，不挂任何 tick：早先挂在 tick 上会让每次「停用/卸载」都白打一个请求，
+      // 并把面板推回 loading 相态闪一下。
       React.useEffect(function () {
         loadStatus();
-      }, [tick]);
+      }, []);
 
       React.useEffect(function () {
         if (tab !== "discover") return undefined;
@@ -2471,7 +2482,7 @@ window.__ModuleLoader__.load({
           // 换页签或改搜索条件时立刻放弃上一批结果，避免旧响应盖住新查询。
           abortKey("catalog");
         };
-      }, [tab, query, category, sort, page, tick]);
+      }, [tab, query, category, sort, page, catalogTick]);
 
       // 成功/信息类提示自己收起（下面的进度线走完就是它消失的时刻）；
       // 警告与错误留着——它们要求用户先做决定。
@@ -2485,13 +2496,13 @@ window.__ModuleLoader__.load({
       }, [notice]);
 
       // 已安装列表两个页签都要拉：头部「更新插件」的角标、抽屉列表，以及侧边栏入口的
-      // 角标都靠它；装完/更新后 bumpTick 也要重读一次。
+      // 角标都靠它；装完/更新/开关/卸载后 bumpInstalledTick 也要重读一次。
       React.useEffect(function () {
         loadInstalled();
         return function () {
           abortKey("installed");
         };
-      }, [tick]);
+      }, [installedTick]);
 
       // 每小时的自动检查（见 startUpdateScheduler）会通知这里重读已安装列表；
       // 只有「多出新更新」时才给回执，否则每小时弹一条提示会很吵。角标不依赖这里，
@@ -2503,8 +2514,14 @@ window.__ModuleLoader__.load({
         });
       }, []);
 
+      /** 写操作（装/卸/开关/更新）之后重读已安装列表——不碰目录，也不重取 /status。 */
       function bumpTick() {
-        setTick(function (n) { return n + 1; });
+        bumpInstalledTick(function (n) { return n + 1; });
+      }
+
+      /** 只有「刷新目录」才需要重抓目录：目录内容与安装/开关无关，不该被写操作连带触发。 */
+      function bumpCatalog() {
+        bumpCatalogTick(function (n) { return n + 1; });
       }
 
       function startJob(next) {
@@ -2728,6 +2745,8 @@ window.__ModuleLoader__.load({
           if (!isCurrent("refresh", bag.token)) return;
           clearJob();
           setNotice({ kind: "success", text: t("notice.refreshOk", { count: formatCount(payload.count || 0) }) });
+          // 刷新目录改变了目录内容：重抓目录，同时重读已安装（updateAvailable 依赖目录 join）。
+          bumpCatalog();
           bumpTick();
         }).catch(function (error) {
           if (error && error.aborted) return;
@@ -2735,6 +2754,7 @@ window.__ModuleLoader__.load({
           clearJob();
           setNotice({ kind: "error", error: error });
           // 刷新失败也要重读，这样目录的 stale 提示会立刻反映当前缓存状态。
+          bumpCatalog();
           bumpTick();
         });
       }

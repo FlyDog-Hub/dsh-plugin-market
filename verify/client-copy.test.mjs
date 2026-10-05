@@ -222,6 +222,20 @@ check('已安装列表两个页签都会加载（角标与列表都依赖它）'
   assert.ok(!/if \(tab !== "installed"\) return undefined;\s*\n\s*loadInstalled/.test(source), '不应再按页签条件加载')
   assert.ok(at > 0)
 })
+check('写操作只重读已安装列表：/status 挂载时读一次、目录只在刷新目录时重抓（性能）', () => {
+  // /status 只回 plugin.version + manager.available，写操作不改变它 → 不该挂在任何 tick 上。
+  assert.match(source, /React\.useEffect\(function \(\) \{\s*\n\s*loadStatus\(\);\s*\n\s*\}, \[\]\);/,
+    'loadStatus 必须只在挂载时读一次（依赖数组为空）')
+  assert.equal(source.includes('loadStatus();\n      }, [tick]'), false, 'loadStatus 不该再挂在写操作的 tick 上')
+  // 目录重抓只由「刷新目录」触发（bumpCatalog），不被写操作连带。
+  assert.match(source, /function bumpCatalog\(\)/, '要有独立的目录重读入口')
+  assert.match(source, /\[tab, query, category, sort, page, catalogTick\]/, '目录 effect 依赖 catalogTick 而非写操作 tick')
+  assert.match(source, /\[installedTick\]/, '已安装 effect 依赖 installedTick')
+  // 刷新目录成功/失败都要同时重抓目录 + 重读已安装（updateAvailable 依赖目录 join）。
+  assert.match(source, /bumpCatalog\(\);\s*\n\s*bumpTick\(\);/, '刷新目录后要同时重抓目录与重读已安装')
+  // 写操作函数仍只调 bumpTick（只重读已安装），不碰目录。
+  assert.equal(/\[tick\]/.test(source), false, '不应再存在共享的 [tick] 依赖')
+})
 check('自更新按钮改名「市场更新检查」，状态文案：检查中/可更新/重新检查/更新中', () => {
   assert.match(source, /selfPhase === "checking" \? t\("action\.checkingSelf"\)/)
   assert.match(source, /selfPhase === "installing" \? t\("action\.updatingSelf"\)/)

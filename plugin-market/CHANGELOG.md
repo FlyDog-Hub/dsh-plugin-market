@@ -157,6 +157,29 @@ dsh plugin --profile <profile> add <新包路径或 npm 名>
    全绿；`adversarial-host.mjs` 全过。e2e 这轮还顺手抓出一个写代码时引入的 bug：`loadInstalled`
    无参调用时 `options` 是 `undefined`，`options.onDone` 抛错会把挂载时的首次回执整个吞掉。
 
+**性能审查**（用户要求「检查插件问题并优化性能」）：
+
+1. **根因：一个共享 `tick` 让三个 effect 全部重跑**。`bumpTick()` 有 7 处调用（安装、卸载、
+   两个开关、刷新成功/失败、批量 finish），而 `/status`、`/catalog`、`/installed` 三个
+   `useEffect` 都挂在同一个 `tick` 上——**点一次「停用/卸载」= 3 个并发请求**，其中两个是纯浪费：
+   - `/status` 只回 `plugin.version` + `manager.available`（宿主 `index.js` 里走 `catalog.peek()`
+     零网络），两者只在启动时定下来，写操作绝不改变它 → 每次写操作重取一次，还把面板推回
+     `loading` 相态闪一下骨架。
+   - `/catalog` 要整份重抓 4412 条再过滤排序分页，而**目录内容与安装/停用插件毫无关系**。
+2. **修复**：拆成两个独立计数器。`loadStatus()` 只在挂载时跑（依赖数组 `[]`）；目录 effect 依赖
+   新增的 `catalogTick`，只有「刷新目录」的 `bumpCatalog()` 会推进它（且刷新后同时重读已安装，
+   因为 `updateAvailable` 依赖目录 join）；已安装 effect 依赖 `installedTick`，所有写操作的
+   `bumpTick()` 只推进它。结果：**一次写操作从 3 个请求降到 1 个**（只 `/installed`），刷新目录
+   才重抓目录。
+3. **审查过、确认无需改动的**：列表 key 用稳定值（`item.id` / `bundle.name`，非 index）；
+   目录分页/过滤/排序在服务端（客户端不每次 render 重算 4412 条）；join 用 `Map` 索引
+   （O(n+m)，非 O(n·m)）；`catalog` 10min TTL + in-flight 去重 + 失败 30s 冷却；目录计数徽标
+   模块级 5min TTL + inflight 复用；搜索 300ms 防抖；请求带 AbortController 且卸载时 abort；
+   `noticeTimer` 正确清理；每小时定时器 `unref()`。
+4. **验收**：`client-copy.test.mjs` **22/22**（新增一条源码不变量：`loadStatus` 依赖数组为空、
+   目录 effect 依赖 `catalogTick`、不存在共享 `[tick]`）；`market-ui.e2e.mjs` **45/45**；
+   `release.ps1 -LocalOnly -Bump none` 全绿。
+
 ## 1.1.3
 
 修「顶部提示条显示不全」——提示条被压成一条、文字只剩半行（用户截图就是这样）。
