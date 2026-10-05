@@ -80,8 +80,9 @@ the market page in the main column.
 - **Themes and languages**: colors come from host theme tokens only; copy follows the host locale
   (Chinese / English)
 - **Restrained motion** (v1.1.0): staggered card entry, hover lift, button press rebound, a sliding tab
-  underline, toasts that pop in with a countdown line and sink out on dismiss, the Updates page taking
-  over the pane, and an indeterminate progress bar during any write. With the system's "reduce motion"
+  underline, toasts that pop in with a countdown line and sink out on dismiss, and the Updates page taking
+  over the pane, with progress shown by the triggering button's spinner + `aria-busy` rather than a bar
+  across the top. With the system's "reduce motion"
   setting everything is turned off and the content still renders complete — verified in a real browser,
   not just in code
 

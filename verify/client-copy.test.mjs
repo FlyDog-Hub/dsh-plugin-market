@@ -81,9 +81,30 @@ check('新增的两组文案职责齐全（自更新 / 可更新列表 / 三个�
     'notice.selfFound', 'notice.selfCurrent', 'notice.selfUpdated', 'notice.updatesFound', 'notice.updatesNone',
     'notice.updateAllStart', 'notice.updateAllDone', 'notice.updateAllNone', 'tab.updates',
     'err.self-update-unavailable.title', 'err.self-update-integrity.title', 'err.self-update-download.title',
+    'err.file-locked.title', 'err.file-locked.why', 'err.file-locked.next', 'err.file-locked.row',
   ]) {
     assert.ok(zhKeys.has(key), `缺少文案键 ${key}`)
   }
+})
+check('更新失败的「文件被占用」类错误有可操作回执（照 dsh-market 的 windows-file-locked 分类）', () => {
+  // 1) 能识别 EPERM/EACCES/拒绝访问（诊断或消息任一命中）
+  assert.match(source, /function fileLockedDetail\(error\)/, '要有占用识别函数')
+  assert.match(source, /EPERM\|EACCES\|EBUSY\|operation not permitted\|Access is denied/, '识别模式要覆盖 pnpm 的 EPERM 与 Windows 拒绝访问')
+  // 2) 三处渲染都接上：错误气泡三段式、可更新行内短句、已安装行错误
+  assert.match(source, /locked \? "err\.file-locked"/, 'errorCopy 命中时要切到 file-locked 文案')
+  assert.match(source, /fileLockedDetail\(error\) \? t\("err\.file-locked\.row"\)/, '可更新行内失败要显示占用短句')
+  assert.match(source, /fileLockedDetail\(bundle\.error\)/, '已安装行错误也要走占用识别')
+  // 3) 详情行要露出 diagnostic 原文（此前 EPERM 从未被渲染）
+  assert.match(source, /message: locked \|\| message/, '命中时详情行用诊断原文')
+})
+check('回执文案精简（用户反馈：toast 尽量短）', () => {
+  assert.match(zhBlock, /"notice\.refreshOk": "已刷新 \{count\} 个插件"/, '刷新回执只留计数')
+  assert.match(zhBlock, /"notice\.updatesFound": "\{count\} 个插件有新版本。"/, '发现回执一句话')
+  assert.match(zhBlock, /"notice\.updatesNone": "全部都是最新版本。"/, '无更新回执一句话')
+  assert.match(zhBlock, /"notice\.updateAllDone": "更新完成：成功 \{ok\}、失败 \{fail\}。"/, '批量汇总去后缀')
+  // 英文侧同步精简，且不残留旧长句
+  assert.equal(enBlock.includes('Catalog refreshed: {count} plugins'), false, 'en 旧刷新长句应已删除')
+  assert.equal(enBlock.includes('Update all finished'), false, 'en 旧汇总长句应已删除')
 })
 
 // ── 取样式表：模板字面量 var STYLES = `...` ─────────────────────────
@@ -139,10 +160,13 @@ check('prefers-reduced-motion 里同时关掉 animation 与 transition', () => {
 })
 
 console.log('\n[3] 新增 UI 的标记与位置')
-check('样式表定义了新增组件：面板、进度条、角标、倒计时线', () => {
-  for (const selector of ['.dshpm-updatesPanel', '.dshpm-progress', '.dshpm-entryBadge', '.dshpm-count', '.dshpm-noticeTimer', '.dshpm-updateRow', '.dshpm-selfNote']) {
+check('样式表定义了新增组件：面板、角标、倒计时线', () => {
+  for (const selector of ['.dshpm-updatesPanel', '.dshpm-entryBadge', '.dshpm-count', '.dshpm-noticeTimer', '.dshpm-updateRow', '.dshpm-selfNote']) {
     assert.ok(css.includes(selector), `样式表缺少 ${selector}`)
   }
+  // 顶部黑条进度条已删（截图反馈：标题上方那条黑杠不要了）；进度改由按钮 spinner + aria-busy + toast 承担。
+  assert.equal(css.includes('.dshpm-progress'), false, '顶部进度条样式应已删除')
+  assert.equal(source.includes('dshpm-progress'), false, '顶部进度条节点应已删除')
 })
 check('回执是悬浮气泡（Android toast）：fixed + 贴底居中 + 不占文档流', () => {
   const rules = css.match(/\.dshpm-notice\s*\{[^}]*\}/g) || []

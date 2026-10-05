@@ -83,9 +83,10 @@ try {
   // 否则"动效生效"这一组断言测的是一条永远关着动画的路径，而 [6] 又会因为同样原因平凡通过。
   await client.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'no-preference' }] })
 
-  // 拦截 /installed 与 /install：前者给确定性数据，后者让「一键更新」跑成功。
+  // 拦截 /installed 与 /install：前者给确定性数据；后者第一条（needs-update）给成功但拖 700ms，
+  // 第二条（second-update）注入 EPERM 占用失败——批量的「顺序执行 + 汇总 + 占用回执」三种反馈都由它验。
   // fixture 插件在真实宿主里必然 400 not-in-catalog——那会造出两条控制台错误，
-  // 而这条路径要测的是**批量流程本身**（顺序执行 + 汇总回执），不是宿主的目录校验。
+  // 而这条路径要测的是**批量流程本身**，不是宿主的目录校验。
   await client.send('Fetch.enable', {
     patterns: [
       { urlPattern: '*plugin-market/installed*', requestStage: 'Request' },
@@ -94,19 +95,40 @@ try {
   })
   client.on('Fetch.requestPaused', (params) => {
     const isInstall = /\/plugin-market\/install$/.test(params.request.url)
-    const payload = isInstall ? { ok: true, application: 'applied' } : INJECTED_INSTALLED
+    const posted = String(params.request.postData || '')
+    let payload = INJECTED_INSTALLED
+    let delay = 0
+    if (isInstall) {
+      if (posted.includes('second-update')) {
+        payload = {
+          ok: false,
+          error: {
+            code: 'operation-error',
+            message: '宿主执行这个操作时报错。',
+            hint: '看宿主日志里的 pnpm 输出，修好原因后重试。',
+            diagnostic: "EPERM: operation not permitted, scandir 'C:\\Users\\test\\.dsh\\profiles\\desktop\\node_modules\\locked-plugin\\node_modules'",
+          },
+        }
+      } else {
+        payload = { ok: true, application: 'applied' }
+        delay = 700 // 拖出一个「写操作进行中」窗口：断言顶部没有黑条进度条
+      }
+    }
     const body = Buffer.from(JSON.stringify(payload), 'utf8').toString('base64')
-    client
-      .send('Fetch.fulfillRequest', {
-        requestId: params.requestId,
-        responseCode: 200,
-        responseHeaders: [
-          { name: 'Content-Type', value: 'application/json' },
-          { name: 'Cache-Control', value: 'no-store' },
-        ],
-        body,
-      })
-      .catch(() => {})
+    const respond = () =>
+      client
+        .send('Fetch.fulfillRequest', {
+          requestId: params.requestId,
+          responseCode: 200,
+          responseHeaders: [
+            { name: 'Content-Type', value: 'application/json' },
+            { name: 'Cache-Control', value: 'no-store' },
+          ],
+          body,
+        })
+        .catch(() => {})
+    if (delay > 0) setTimeout(respond, delay)
+    else respond()
   })
   client.on('Runtime.consoleAPICalled', (params) => {
     if (params.type === 'error') {
@@ -126,6 +148,9 @@ try {
     `(() => { const b = Array.from(document.querySelectorAll('button')).find(x => /^(继续|Continue)$/.test(x.textContent.trim())); if (b) { b.click(); return true; } return false; })()`,
   )
   await new Promise((resolve) => setTimeout(resolve, 600))
+  // scratch profile 没配 API Key，DSH 随后会弹「添加一个 API Key 开始使用」；截图前点「稍后配置」关掉它。
+  const dismissApiDialog = `(() => { const b = Array.from(document.querySelectorAll('button')).find(x => /稍后配置|Configure later/i.test(x.textContent.trim())); if (b) { b.click(); return true; } return false; })()`
+  await evaluate(client, dismissApiDialog)
   const entryText = await evaluate(client, `document.querySelector('.dshpm-entry').textContent.trim()`)
   expect('侧边栏入口渲染出「插件市场」文案', /插件市场|Plugin Market/.test(String(entryText)), `实际：${entryText}`)
   const entryStyled = await evaluate(
@@ -152,6 +177,9 @@ try {
     Array.isArray(headerButtons) && headerButtons.length === 1 && /刷新|Refresh/.test(headerButtons[0] || ''),
     `实际：${JSON.stringify(headerButtons)}`,
   )
+  // 角标来自模块级计数（ensureUpdateCount 异步注入 /installed），不是同步渲染的——
+  // 前面多了几次 evaluate，这里必须等它到位，不能裸读一次就断言。
+  await waitFor(client, `(() => { const b = document.querySelector('.dshpm-count'); return !!b && b.textContent.trim() === '2'; })()`, 10000, '可更新页签角标显示注入的 2')
   const badge = await evaluate(client, `(() => { const b = document.querySelector('.dshpm-count'); return b ? b.textContent.trim() : null; })()`)
   expect('「可更新」页签上有可更新数量角标，且数字来自注入的列表', badge === '2', `实际：${badge}`)
 
@@ -186,7 +214,7 @@ try {
   )
   expect('提示条没有被压扁（clientHeight ≥ scrollHeight）', Number(noticeMetrics?.client) >= Number(noticeMetrics?.scroll), JSON.stringify(noticeMetrics))
   expect('提示条高度足够容纳整行文字（≥ 30px）', Number(noticeMetrics?.offset) >= 30, JSON.stringify(noticeMetrics))
-  expect('提示条文案完整可读（不是被裁掉半行）', /发现 2 个插件有新版本/.test(String(noticeMetrics?.text)), String(noticeMetrics?.text))
+  expect('提示条文案完整可读（不是被裁掉半行）', /2 个插件有新版本/.test(String(noticeMetrics?.text)), String(noticeMetrics?.text))
 
   // 回执改成了 Android toast 那种悬浮气泡。computed position 一定是 'fixed'，那不算证据；
   // 真正的判据是几何位置——若某个祖先带 transform/filter 把 fixed 的包含块抢走，
@@ -270,7 +298,7 @@ try {
   expect('整页切换生效（发现页卡片已卸载，不是叠在下面）', Number(cardsAfter) === 0, `剩余卡片 ${cardsAfter}`)
   await waitFor(client, `document.querySelector('.dshpm-updatesPanel').getBoundingClientRect().height > 120`, 8000, '可更新页展开到最终高度')
   // 打开页签要给回执（原「更新插件」按钮的反馈迁到了这里）。
-  await waitFor(client, `(() => { const n = document.querySelector('.dshpm-notice'); if (!n) return false; return /发现 \\d+ 个插件有新版本|全部都是最新/.test(n.innerText.replace(/\\s+/g, ' ')); })()`, 8000, '打开页签后提示条给出回执')
+  await waitFor(client, `(() => { const n = document.querySelector('.dshpm-notice'); if (!n) return false; return /个插件有新版本|全部都是最新/.test(n.innerText.replace(/\\s+/g, ' ')); })()`, 8000, '打开页签后提示条给出回执')
   expect('打开「可更新」页签后提示条给出结果回执（发现 2 个插件有新版本）', true)
   const panelText = await evaluate(client, `document.querySelector('.dshpm-updatesPanel').innerText`)
   expect('列表里列出两个可更新插件与版本走向', /@fixture\/needs-update/.test(String(panelText)) && /1\.2\.0/.test(String(panelText)) && /@fixture\/second-update/.test(String(panelText)), String(panelText).slice(0, 200))
@@ -301,14 +329,30 @@ try {
   const selfState = await evaluate(client, `(() => { const b = document.querySelectorAll('.dshpm-updatesActions button')[1]; return b ? { state: b.getAttribute('data-state'), busy: b.getAttribute('aria-busy') } : null; })()`)
   expect('「检查市场更新」按钮带状态机标记（启动时的自动检查已写过一次）', !!selfState && ['idle', 'checking', 'ready', 'error'].includes(selfState?.state), JSON.stringify(selfState))
 
-  // 点「一键更新」：顺序逐个跑，跑完给一条汇总回执（宿主对 fixture 返回 not-in-catalog，所以必然是失败汇总）。
+  // 点「一键更新」：顺序逐个跑，第一条成功、第二条被注入 EPERM 占用失败 → 汇总必须如实写「成功 1、失败 1」。
   await evaluate(client, `(() => { const b = Array.from(document.querySelectorAll('.dshpm-updatesActions button')).find(x => /一键更新/.test(x.textContent)); if (b) b.click(); return true; })()`)
-  await waitFor(client, `(() => { const n = document.querySelector('.dshpm-notice'); if (!n) return false; const txt = n.innerText.replace(/\\s+/g, ' '); return /一键更新完成：成功 2 个|构建脚本/.test(txt); })()`, 20000, '一键更新给出汇总回执')
-  expect('点「一键更新」后提示条给出汇总回执（成功 2 个、失败 0 个）', true)
+  // 第一条响应被拖了 700ms：这个窗口里批量按钮是 aria-busy，而顶部**没有**黑条进度条（已删）。
+  await waitFor(client, `document.querySelector('.dshpm-updatesActions button[aria-busy="true"]') !== null`, 8000, '批量进行中（按钮 aria-busy）')
+  const progressDuring = await evaluate(client, `document.querySelectorAll('.dshpm-progress').length`)
+  expect('写操作进行中顶部没有黑条进度条（用户点名删掉的那条）', Number(progressDuring) === 0, `进度条元素 ${progressDuring}`)
+  await waitFor(client, `(() => { const n = document.querySelector('.dshpm-notice'); if (!n) return false; const txt = n.innerText.replace(/\\s+/g, ' '); return /更新完成：成功 1、失败 1/.test(txt); })()`, 20000, '一键更新给出汇总回执')
+  expect('汇总回执如实反映批量结果（成功 1、失败 1）', true)
+  const rowResults = await evaluate(
+    client,
+    `Array.from(document.querySelectorAll('.dshpm-updateRow .dshpm-updateResult')).map(el => ({ ok: el.getAttribute('data-ok'), text: el.innerText.trim() }))`,
+  )
+  expect(
+    '第二条失败行显示「文件被占用」的可操作短句（不是宿主的通用句）',
+    Array.isArray(rowResults) && rowResults.length === 2 && rowResults[0]?.ok === 'true' && rowResults[1]?.ok === 'false' && /占用/.test(String(rowResults[1]?.text)),
+    JSON.stringify(rowResults),
+  )
 
   const panelOpenHeight = await evaluate(client, `document.querySelector('.dshpm-updatesPanel').getBoundingClientRect().height`)
   expect('可更新页有实际高度（不是空壳）', Number(panelOpenHeight) > 120, `高度 ${panelOpenHeight}`)
 
+  // 截图前再关一次 API Key 引导弹窗（它在会话列表加载后才出现，会盖住可更新页）。
+  await evaluate(client, dismissApiDialog)
+  await new Promise((resolve) => setTimeout(resolve, 300))
   await screenshot(client, join(shotDir, 'market-updates-open.png'))
   console.log(`  · 截图：${join(shotDir, 'market-updates-open.png')}`)
   // 头部工具条 2 倍放大：文档里要看清三个按钮的样式与角标。

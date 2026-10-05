@@ -132,7 +132,7 @@ window.__ModuleLoader__.load({
         "notice.removeCancelled": "{name} 的卸载已取消",
         "notice.toggleEnabled": "已启用 {name}",
         "notice.toggleDisabled": "已停用 {name}",
-        "notice.refreshOk": "目录已刷新，共 {count} 个插件",
+        "notice.refreshOk": "已刷新 {count} 个插件",
         "notice.noChange": "本次操作没有产生变更（宿主可能正在执行同一操作）",
         "notice.buildsPending": "{name} 需要先执行构建脚本，请在下方确认条里批准",
         "notice.buildsStillPending": "构建脚本仍未获批准：{builds}。请重试，或在终端安装。",
@@ -145,6 +145,10 @@ window.__ModuleLoader__.load({
         "err.unknown.title": "请求没有完成",
         "err.unknown.why": "市场接口返回了没有预期的结果。",
         "err.unknown.next": "点「重试」；若持续失败，请查看宿主日志。",
+        "err.file-locked.title": "插件文件被占用",
+        "err.file-locked.why": "运行中的 DSH 占着这个插件的文件，pnpm 换不了目录（EPERM / 拒绝访问）。",
+        "err.file-locked.next": "完全退出 DSH（含托盘），重新打开后再点更新；若仍失败，说明该插件目录已损坏，先卸载再安装。",
+        "err.file-locked.row": "文件被 DSH 占用，退出后重试",
         "err.network.title": "无法连接宿主的市场接口",
         "err.network.why": "浏览器到本地宿主的请求失败，宿主可能已退出或连接被拦截。",
         "err.network.next": "确认 DSH 窗口仍在运行，然后点「重试」。",
@@ -242,11 +246,11 @@ window.__ModuleLoader__.load({
         "updates.noCatalog.title": "目录还没就绪",
         "updates.noCatalog.body": "要判断有没有新版本，得先把目录读进来：点「刷新目录」后重试。",
         "updates.failed": "{name} 更新失败",
-        "notice.updatesFound": "发现 {count} 个插件有新版本，可逐个「更新到 x.y.z」或点「一键更新」。",
-        "notice.updateAllStart": "开始逐个更新 {count} 个插件…",
-        "notice.updateAllDone": "一键更新完成：成功 {ok} 个、失败 {fail} 个。",
+        "notice.updatesFound": "{count} 个插件有新版本。",
+        "notice.updateAllStart": "开始更新 {count} 个插件…",
+        "notice.updateAllDone": "更新完成：成功 {ok}、失败 {fail}。",
         "notice.updateAllNone": "没有需要更新的插件。",
-        "notice.updatesNone": "已检查 {installed} 个插件：全部都是最新版本。",
+        "notice.updatesNone": "全部都是最新版本。",
         "notice.selfFound": "插件市场有新版本 v{version}：点「更新到 {version}」安装。",
         "notice.selfCurrent": "插件市场已是最新（v{version}）。",
         "notice.selfUpdated": "插件市场已更新到 v{version}；重启 DSH 后新代码才生效。",
@@ -365,7 +369,7 @@ window.__ModuleLoader__.load({
         "notice.removeCancelled": "The removal of {name} was cancelled",
         "notice.toggleEnabled": "Enabled {name}",
         "notice.toggleDisabled": "Disabled {name}",
-        "notice.refreshOk": "Catalog refreshed: {count} plugins",
+        "notice.refreshOk": "Refreshed: {count} plugins",
         "notice.noChange": "This operation made no change (the host may already be running it)",
         "notice.buildsPending": "{name} needs install scripts first; approve them in the banner below",
         "notice.buildsStillPending": "Install scripts remain unapproved: {builds}. Retry, or install in a terminal.",
@@ -378,6 +382,10 @@ window.__ModuleLoader__.load({
         "err.unknown.title": "The request did not complete",
         "err.unknown.why": "The market endpoint returned an unexpected result.",
         "err.unknown.next": "Retry; if it keeps failing, check the host log.",
+        "err.file-locked.title": "Plugin files are in use",
+        "err.file-locked.why": "The running DSH holds this plugin's files open, so pnpm cannot replace the directory (EPERM / access denied).",
+        "err.file-locked.next": "Quit DSH completely (including the tray), reopen it and update again; if it still fails, the plugin directory is damaged — uninstall and reinstall it.",
+        "err.file-locked.row": "In use by DSH — quit and retry",
         "err.network.title": "Cannot reach the host market endpoint",
         "err.network.why": "The request from the browser to the local host failed; the host may have exited or the connection is blocked.",
         "err.network.next": "Make sure the DSH window is still running, then retry.",
@@ -475,11 +483,11 @@ window.__ModuleLoader__.load({
         "updates.noCatalog.title": "The catalog is not ready",
         "updates.noCatalog.body": "Deciding whether a newer version exists needs the catalog: refresh it and try again.",
         "updates.failed": "{name} failed to update",
-        "notice.updatesFound": "{count} plugins have a newer version — confirm them one by one, or use Update all.",
-        "notice.updateAllStart": "Updating {count} plugins, one at a time…",
-        "notice.updateAllDone": "Update all finished: {ok} succeeded, {fail} failed.",
+        "notice.updatesFound": "{count} plugins have a newer version.",
+        "notice.updateAllStart": "Updating {count} plugins…",
+        "notice.updateAllDone": "Done: {ok} succeeded, {fail} failed.",
         "notice.updateAllNone": "Nothing to update.",
-        "notice.updatesNone": "Checked {installed} plugins: all of them are up to date.",
+        "notice.updatesNone": "All plugins are up to date.",
         "notice.selfFound": "Plugin market v{version} is available: click “Update to {version}”.",
         "notice.selfCurrent": "The plugin market is up to date (v{version}).",
         "notice.selfUpdated": "The plugin market was updated to v{version}; the new code applies after DSH restarts.",
@@ -757,10 +765,28 @@ window.__ModuleLoader__.load({
       "aborted": true
     };
 
+    /**
+     * 识别「文件被占用」类失败（EPERM / EACCES / EBUSY / 拒绝访问）。
+     * dsh-market 把 pnpm 的 ERR_PNPM_EPERM 归类为 windows-file-locked 并给可操作回执
+     * （运行中的宿主占着文件，完全退出后重试）；这里做同样的识别——否则用户只会看到
+     * 「宿主执行这个操作时报错」+ 一句「看宿主日志」，而 diagnostic 里的 EPERM 根本没被渲染。
+     * @returns 命中时返回诊断原文（用于详情行），未命中返回空串。
+     */
+    function fileLockedDetail(error) {
+      if (!error) return "";
+      var pattern = /EPERM|EACCES|EBUSY|operation not permitted|Access is denied|拒绝访问/i;
+      var diagnostic = error.diagnostic ? String(error.diagnostic) : "";
+      var message = error.message ? String(error.message) : "";
+      if (diagnostic && pattern.test(diagnostic)) return diagnostic;
+      if (message && pattern.test(message)) return message;
+      return "";
+    }
+
     function errorCopy(error) {
       var code = error && error.code ? String(error.code) : "unknown";
       var known = !!ERROR_PREFIXES[code];
-      var prefix = known ? "err." + code : "err.unknown";
+      var locked = fileLockedDetail(error);
+      var prefix = locked ? "err.file-locked" : known ? "err." + code : "err.unknown";
       var status = error && error.status !== undefined ? error.status : "";
       var message = error && error.message ? String(error.message) : "";
       var copy = {
@@ -768,10 +794,10 @@ window.__ModuleLoader__.load({
         title: t(prefix + ".title", { status: status }),
         why: t(prefix + ".why"),
         next: t(prefix + ".next"),
-        message: message,
+        message: locked || message,
         hint: error && error.hint ? String(error.hint) : ""
       };
-      if (!known && message) copy.why = message;
+      if (!locked && !known && message) copy.why = message;
       return copy;
     }
 
@@ -1055,10 +1081,6 @@ window.__ModuleLoader__.load({
 .dshpm-count { display:inline-flex; align-items:center; justify-content:center; min-width:16px; height:16px; margin-left:2px; padding:0 4px; border-radius:999px; background:var(--dsw-alias-state-warn-primary,#b7791f); color:#fff; font-size:.85em; font-weight:600; line-height:1; }
 .dshpm-selfNote { display:flex; align-items:flex-start; gap:6px; margin-top:8px; padding:6px 9px; border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.1)); border-left:3px solid var(--dsw-alias-brand-primary,#4d6bfe); border-radius:var(--dsw-radius-md,8px); background:var(--dsw-alias-bg-layer-1,transparent); color:var(--dsw-alias-label-secondary,#6b6b6b); font-size:.79em; line-height:1.55; }
 .dshpm-selfNote svg { flex:none; margin-top:2px; }
-
-/* ── 顶部不确定性进度条：任何写操作进行中都会出现 ── */
-.dshpm-progress { position:relative; height:2px; margin:-6px 0 0; border-radius:2px; overflow:hidden; background:var(--dsw-alias-border-l1,rgba(127,127,127,.16)); }
-.dshpm-progress::after { content:""; position:absolute; top:0; bottom:0; width:38%; border-radius:2px; background:var(--dsw-alias-brand-primary,#4d6bfe); animation:dshpm-slide 1.15s cubic-bezier(.4,0,.2,1) infinite; }
 
 /* ── 可更新插件面板：就地展开，不遮挡列表、不制造第二个滚动容器 ── */
 /* 可更新页是**整页页签**，不再是会折叠的抽屉：所以这里不写 max-height / overflow:hidden——
@@ -1870,7 +1892,7 @@ window.__ModuleLoader__.load({
               entries.length ? " · " + t("installed.plugins") + " " + entries.length : "",
               hostReason ? " · " + hostReason : ""),
             bundle.error
-              ? el("div", { className: "dshpm-rowError" }, t("installed.rowError", { message: bundle.error.message || bundle.error.code || "" }))
+              ? el("div", { className: "dshpm-rowError" }, t("installed.rowError", { message: fileLockedDetail(bundle.error) ? t("err.file-locked.row") : (bundle.error.message || bundle.error.code || "") }))
               : null),
           el("div", { className: "dshpm-rowActions" },
             el(Switch, {
@@ -2548,7 +2570,8 @@ window.__ModuleLoader__.load({
           if (!mountedRef.current) return;
           clearJob();
           if (!silent) setNotice({ kind: "error", error: error });
-          report({ ok: false, text: error && error.message ? String(error.message) : t("updates.failed", { name: label }) });
+          // 被占用的失败给一句能照做的短话（行内放不下三段式），而不是宿主的通用句。
+          report({ ok: false, text: fileLockedDetail(error) ? t("err.file-locked.row") : (error && error.message ? String(error.message) : t("updates.failed", { name: label })) });
         });
       }
 
@@ -2838,8 +2861,8 @@ window.__ModuleLoader__.load({
         className: "dshpm-root",
         "data-busy": job ? "true" : "false"
       },
-        // 任何操作进行中都在顶部走一条不确定性进度条：安装/卸载/刷新/自更新共用。
-        job ? el("div", { className: "dshpm-progress", "aria-hidden": "true" }) : null,
+        // 进度已改为头部「刷新目录」按钮里的 spinner + aria-busy（截图里标题上方那条黑杠），
+        // 页面顶部不再放横条——任何写操作仍然显示在按钮与 toast 上。
         el("div", { className: "dshpm-header" },
           el("div", { className: "dshpm-headerMain" },
             el("h2", { className: "dshpm-title" }, t("market.title")),

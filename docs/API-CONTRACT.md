@@ -319,7 +319,8 @@ window.__ModuleLoader__.load({
     **不占文档流**，出现或消失都不推动布局、也不必滚动才看得见。成功/信息类 4.6s 自动收起并带倒计时线；
     **收起有退场动画**：先翻 `data-open="false"` 沉下去（200ms，`NOTICE_CLOSE_MS`）再卸载，不是凭空消失；
     毛玻璃（`backdrop-filter`）+ 分层投影。警告/错误保留到手动关闭。
-    同一根节点下仍有一条顶部不确定性进度条（任何写操作进行中）。
+    标题上方**不再放**顶部进度条（截图反馈那条黑杠已删）：写操作的进行中状态由
+    触发它的按钮（spinner + `aria-busy` + 禁用）与回执气泡表达。
   - 页签：`发现`（目录）/ `已安装` / `可更新`（带可更新计数角标，排在已安装右边；点它会切过去并带回执地重读）。
   - 发现页：搜索框（回车或 300ms 防抖）、分类 chips、排序下拉、卡片网格、分页（上一页/下一页 + 第 x/y 页）。
   - 卡片：名称 + 作者 + 描述（按界面语言）+ star/下载 + 版本 + 分类 + 「安装」/「已安装」/「更新」按钮 + 「详情」。
@@ -364,5 +365,5 @@ window.__ModuleLoader__.load({
    - 端到端（`verify/self-update-live.ps1`）：临时把当前版本降到低于最新标签 → 真的下载 → 校验 →
      `pnpm add` 装进 scratch profile（依赖变为 `file:` 指向下载物）→ 结束时按字节还原本地 `package.json`。
 10. **同一路径的 GET 与 POST 必须只有一个路由登记项**：路由表以 path 为键，登记两次会互相覆盖，`GET /self-update` 会变成 405。改这里要重跑 §5 第 9 条的 GET 断言。
-11. **真实浏览器渲染**（`verify/ui-check.ps1` → `verify/market-ui.e2e.mjs`）：侧边栏入口可点开面板；头部只剩「刷新目录」一个按钮；页签栏是 `发现 / 已安装 / 可更新`，有 2 个可更新插件时页签角标显示 `2`；切到「可更新」页能看到两条记录、页头右侧有「一键更新（2）」与「检查市场更新」（带 `data-state`，启动时的自动检查会把它推到 `checking`/`ready`），每行仍有自己的「更新到 x.y.z」，点批量按钮给出「成功 2 个」的汇总回执；卡片/列表行的 `animation-name` 含 `dshpm-rise` 且 `animation-fill-mode` 是 `backwards`；切到 `prefers-reduced-motion: reduce` 后 `animation-name` 变 `none` 而列表行仍然可见（行数不变）。
-12. **文案与动效不变量**（`verify/client-copy.test.mjs`）：zh/en 键集完全一致；代码里用到的每个 `t("字面量键")` 都在两种语言里存在；没有僵尸文案键；被引用的 `@keyframes` 都有定义；没有任何升入动画用 `forwards`/`both`。
+11. **真实浏览器渲染**（`verify/ui-check.ps1` → `verify/market-ui.e2e.mjs`）：侧边栏入口可点开面板；头部只剩「刷新目录」一个按钮；页签栏是 `发现 / 已安装 / 可更新`，有 2 个可更新插件时页签角标显示 `2`；切到「可更新」页能看到两条记录、页头右侧有「一键更新（2）」与「检查市场更新」（带 `data-state`，启动时的自动检查会把它推到 `checking`/`ready`），每行仍有自己的「更新到 x.y.z」；点批量按钮时第一条成功、第二条由 CDP 注入 `EPERM` diagnostic 失败——汇总回执必须写「成功 1、失败 1」，失败行必须显示「文件被 DSH 占用」的专用短句，且批量进行中（按钮 `aria-busy`）页面里 `.dshpm-progress` 必须为 0（顶部黑条已删）；卡片/列表行的 `animation-name` 含 `dshpm-rise` 且 `animation-fill-mode` 是 `backwards`；切到 `prefers-reduced-motion: reduce` 后 `animation-name` 变 `none` 而列表行仍然可见（行数不变）。
+12. **文案与动效不变量**（`verify/client-copy.test.mjs`）：zh/en 键集完全一致；代码里用到的每个 `t("字面量键")` 都在两种语言里存在；没有僵尸文案键；被引用的 `@keyframes` 都有定义；没有任何升入动画用 `forwards`/`both`；顶部黑条进度条（`.dshpm-progress`）不存在；更新失败的 `EPERM`/拒绝访问必须被 `fileLockedDetail` 识别并切到 `err.file-locked.*`（三处接入：错误气泡、可更新行内、已安装行错误）；回执文案保持精简形态（`已刷新 {count} 个插件` 等）。

@@ -101,6 +101,33 @@ dsh plugin --profile <profile> add <新包路径或 npm 名>
    不去打宿主的目录校验）。顺带修掉 e2e 失败时**一行输出都没有**的坑：`process.exit(1)` 会把管道里
    还没刷出去的 `console.log` 全吞掉——改用 `process.exitCode = 1`。
 
+**第二轮截图反馈**（toast 精简 / 删黑条 / 修更新失败的回执）：
+
+1. **标题上方的黑条进度条删掉**（用户点名）：`.dshpm-progress` 节点与样式全部移除，写操作的
+   「进行中」改由**触发它的按钮**表达（spinner + `aria-busy` + 禁用），进度感不再横在标题上。
+   e2e 新增断言：批量进行中（按钮 `aria-busy=true` 的窗口）页面里 `.dshpm-progress` 必须为 0。
+2. **回执文案精简**（用户点名「toast 尽量精简」）：
+   - `目录已刷新，共 4412 个插件` → `已刷新 4412 个插件`
+   - `发现 2 个插件有新版本，可逐个「更新到 x.y.z」或点「一键更新」。` → `2 个插件有新版本。`
+   - `已检查 15 个插件：全部都是最新版本。` → `全部都是最新版本。`
+   - `一键更新完成：成功 2 个、失败 0 个。` → `更新完成：成功 2、失败 1。`
+   - 英文侧同步精简；e2e 相应正则改写。
+3. **更新失败的回执翻译成人话**（用户报「点更新会失败」，先查了 dsh-market 的升级逻辑再修）：
+   - 根因：宿主的 `EPERM: operation not permitted, scandir …`（运行中的 DSH 占着 `dsh-our-free-model`
+     的文件 / 该目录权限已坏，pnpm 任何一次写树都会在它上面撞车）原本以 `operation-error` 透传，
+     而它**不在** `ERROR_PREFIXES` 里 → 套通用模板「请求没有完成 / 看宿主日志」，且客户端
+     `errorCopy` **从不渲染 `diagnostic`**——唯一可操作的信息（EPERM + 具体路径）根本没显示。
+   - 修复（对齐 dsh-market `pnpm-compat.ts` 的 `windows-file-locked` 分类）：新增
+     `fileLockedDetail()` 识别 `EPERM/EACCES/EBUSY/operation not permitted/Access is denied`，
+     命中时三段式文案切到专用键 `err.file-locked.*`（「插件文件被占用 / 完全退出 DSH 后重试 /
+     目录损坏就先卸载再安装」），详情行露出 diagnostic 原文；可更新行内短句与已安装行错误
+     同步换成 `err.file-locked.row`（「文件被 DSH 占用，退出后重试」）。
+   - e2e 把第二条 `/install` 拦截成带 EPERM diagnostic 的失败：汇总必须写「成功 1、失败 1」，
+     失败行必须显示占用短句。
+4. **验收**：`client-copy.test.mjs` **19/19**（新增：占用识别三处接入、精简文案断言、
+   黑条删除断言）；`market-ui.e2e.mjs` **42/42**（新增：写操作中无 `.dshpm-progress`、
+   EPERM 失败行回执、汇总 1/1；截图前顺手关掉 scratch profile 的 API Key 引导弹窗）。
+
 ## 1.1.3
 
 修「顶部提示条显示不全」——提示条被压成一条、文字只剩半行（用户截图就是这样）。
