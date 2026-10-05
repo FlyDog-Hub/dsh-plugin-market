@@ -1,5 +1,31 @@
 # Changelog
 
+## 1.1.6
+
+- **打包与发布迁入 GitHub Actions，本地不再产生任何打包产物**（用户任务：每次本地打包发布
+  太消耗 token）：`release.ps1` 本地只做「门禁 → 递增 → 提交 → 打标签 → 推送」——
+  `-LocalOnly` 现在只跑门禁、不打包；新增 CI 专用 `-CiPack`（仅 `GITHUB_ACTIONS=true` 放行，
+  本地调用直接被拒）。新增 `.github/workflows/pack-release.yml`：标签推送触发（也可
+  `workflow_dispatch` 补跑），门禁 → `pnpm pack` → `gh release create`（Release 已存在则
+  `upload --clobber` 幂等补附件）→ `publish-npm` job（版本已在 npm 上则跳过，凭据
+  `secrets.NPM_TOKEN`）。npm 发布必须并进这个 workflow：由 GITHUB_TOKEN 创建的 Release
+  **不会**触发其它 workflow，`publish-npm.yml` 只剩手动补发作用。
+- **`releases/` 目录从仓库移除，回退一律从 GitHub Release 附件下载**：6 个 tarball 与
+  `index.json` 全部 `git rm`，本地 `dist/` 清空——仓库里从此不留任何打包产物，
+  旧版安装与回退都指向 Releases 页附件（`releases/download/<tag>/<name>-<version>.tgz>`）。
+- **自更新检查改为 GitHub 附件元数据直读**（`releases/` 下线的连带修复，不修则下个版本
+  按钮必坏）：`github-release` 源用附件 `digest`（sha256）与 `size` 当场组装条目、不再查
+  仓库里的 `index.json`；附件缺 `digest` 时退回老路（≤v1.1.5 的标签仍带清单）。新版本的
+  jsDelivr 两个列表源与标签探测会 404 并如实记进 `diagnostic`，限流时退化成
+  「更新通道没有回应 + 手动升级提示」，**不会谎称已是最新**。回归：
+  `verify/self-update.test.mjs` 新增 2 条（附件成条目 / 缺 digest 退老路），37→39 断言。
+- **包内 README 同步根仓库新版式**：1.1.5 重做了根 README（居中标题、徽章行、头图、「为什么做它 /
+  界面速览 / 快速开始 / 它怎么工作 / 数据来源 / 安全边界」），但打进 npm 包的
+  `plugin-market/README.md` 仍是旧版英文长文，导致 npmjs.com 页面与 GitHub 主页两套长相。本版把包内
+  `README.md` / `README.zh.md` 换成同一套版式，图片与文档链接改用 `raw.githubusercontent.com` /
+  `github.com/blob/main` 绝对地址（npm 包不携带 `docs/assets/`，相对路径会在 npm 页面 404）。包内容、
+  安装路径、接口契约均无变化。
+
 ## 1.1.5
 
 - **首次进入「可更新」页不再显示「再次检查」**（用户报：第一次进入这个界面怎么会是再次检查的
