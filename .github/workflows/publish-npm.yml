@@ -1,0 +1,31 @@
+name: Publish to npm
+
+# 只在 release.ps1 创建 Release 时触发——版本号由 release.ps1 独家管理，
+# 这里绝不 bump：npm version patch 会破坏 versionCode 归零纪律，且同版本重发会被 npm 拒。
+on:
+  release:
+    types: [created]
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        # package.json 在 plugin-market/ 子目录（教程模板在根目录跑，ENOENT 就是这么来的）。
+        working-directory: plugin-market
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: 'https://registry.npmjs.org'
+
+      # 没有 build 步骤：lib/*.js 就是发布内容，npm publish 直接打包。
+      # 不跑 npm install / npm run build——本包无构建，装依赖反而可能被 audit 卡住。
+      - name: Publish to npm
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
