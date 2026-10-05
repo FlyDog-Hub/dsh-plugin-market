@@ -196,6 +196,26 @@ dsh plugin --profile <profile> add <新包路径或 npm 名>
    `action.checkSelf`：zh「插件市场更新」/ en「Plugin market update」，并同步 21 处
    代码注释与文档引用（`README.zh.md`、`RELEASING.md`、`PLUGIN-MARKET.md`、
    `API-CONTRACT.md`、`CHANGELOG.md`）。
+5. **右键补成四态状态机**（用户报「点不点都是一个」）：这颗按钮此前只有
+   idle → checking → ready/installing 三态，且装完直接跳回 idle，点击后文字几乎不变。
+   按用户指定的四态补齐：
+
+   | 状态 | 文案 |
+   |---|---|
+   | 初始（未点） | 插件市场更新 |
+   | 点击后检查中 | 正在更新… |
+   | 确认更新后 | 更新成功（停 `SELF_DONE_MS = 3000` 再回 idle） |
+   | 检查完没有更新 | 再次检查 |
+
+   实现：`action.checkingSelf` →「正在更新…」、`action.recheckSelfOnly` →「再次检查」、
+   新增 `action.selfDone`；新增模块级 `done` 相态与 `markSelfDone()`（定时器放模块级，
+   装完亮 3 秒再复位——回 idle 不是谎称新代码已生效，只是把按钮复位）；`ready`/`done`
+   两个相态都渲染对勾图标。
+6. **验收**：`client-copy.test.mjs` **22/22**（断言改为锁四态状态机与 `done` 分支）；
+   `market-ui.e2e.mjs` **49/49**——**新增 `/self-update` CDP 桩**（此前右键点下去打的是
+   真实宿主，结果取决于 CDN 与 10 分钟缓存，等于没测），恒回「无更新」+ 拖 400ms，
+   新增 2 条守卫：点右键立即进「正在更新…」忙碌态、检查完变「再次检查」；
+   `release.ps1 -LocalOnly -Bump none` 全绿。
 
 ## 1.1.3
 

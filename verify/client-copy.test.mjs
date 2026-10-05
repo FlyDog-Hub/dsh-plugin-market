@@ -239,14 +239,17 @@ check('写操作只重读已安装列表：/status 挂载时读一次、目录�
   // 写操作函数仍只调 bumpTick（只重读已安装），不碰目录。
   assert.equal(/\[tick\]/.test(source), false, '不应再存在共享的 [tick] 依赖')
 })
-check('自更新按钮改名「插件市场更新」，状态文案：检查中/可更新/再查一次/更新中', () => {
+check('自更新按钮四态状态机：插件市场更新/正在更新…/更新成功/再次检查', () => {
   assert.match(source, /selfPhase === "checking" \? t\("action\.checkingSelf"\)/)
   assert.match(source, /selfPhase === "installing" \? t\("action\.updatingSelf"\)/)
+  assert.match(source, /selfPhase === "done" \? t\("action\.selfDone"\)/)
   assert.match(source, /selfAvailable \? t\("action\.updateSelf"/)
-  // 检查完没有新版本 →「再查一次」：左边那颗是插件的「重新检查」，右边这颗是市场的，
+  // 检查完没有新版本 →「再次检查」：左边那颗是插件的「重新检查」，右边这颗是市场的，
   // 两颗黑按钮写一样的字分不清（用户点名要文字区分）。
   assert.match(source, /selfPhase === "ready" \? t\("action\.recheckSelfOnly"\)/)
-  assert.match(zhBlock, /"action\.recheckSelfOnly": "再查一次"/, '右键就绪态文案与左键「重新检查」不同')
+  assert.match(zhBlock, /"action\.recheckSelfOnly": "再次检查"/, '右键就绪态文案与左键「重新检查」不同')
+  assert.match(zhBlock, /"action\.checkingSelf": "正在更新…"/, '点击后显示「正在更新…」')
+  assert.match(zhBlock, /"action\.selfDone": "更新成功"/, '装完显示「更新成功」')
   assert.match(zhBlock, /"action\.checkSelf": "插件市场更新"/, '按钮已按用户要求改名')
   assert.equal(zhBlock.includes('"action.selfCurrent"'), false, '「已是最新」挨着插件更新只会误导')
 })

@@ -223,12 +223,14 @@ window.__ModuleLoader__.load({
         "meta.downloads": "↓ {count}",
         "action.checkUpdates": "检查更新",
         "action.checkSelf": "插件市场更新",
-        "action.checkingSelf": "检查中…",
+        "action.checkingSelf": "正在更新…",
         "action.recheckSelf": "重新检查",
         // 右边那颗的就绪态：不能和左边的「重新检查」同文案——两颗黑按钮写一样的字会分不清。
-        "action.recheckSelfOnly": "再查一次",
+        "action.recheckSelfOnly": "再次检查",
+        // 装完的短暂成功态：装完按钮会跳回「插件市场更新」，用户看不到「装好了」这一步。
+        "action.selfDone": "更新成功",
         "action.updateSelf": "更新到 {version}",
-        "action.updatingSelf": "正在更新市场…",
+        "action.updatingSelf": "正在更新…",
         "action.updateAllCount": "一键更新（{count}）",
         "action.updatingAll": "更新中…",
         "self.available": "发现新版本 v{version}",
@@ -461,13 +463,16 @@ window.__ModuleLoader__.load({
         "meta.downloads": "↓ {count}",
         "action.checkUpdates": "Check for updates",
         "action.checkSelf": "Plugin market update",
-        "action.checkingSelf": "Checking…",
+        "action.checkingSelf": "Updating…",
         "action.recheckSelf": "Check again",
         // Must differ from the left button's "Check again": two black buttons with the same
         // label are indistinguishable.
-        "action.recheckSelfOnly": "Check market again",
+        "action.recheckSelfOnly": "Check again",
+        // Transient success state: without it the button jumps back to its idle label and the
+        // user never sees that the install actually finished.
+        "action.selfDone": "Updated",
         "action.updateSelf": "Update to {version}",
-        "action.updatingSelf": "Updating the market…",
+        "action.updatingSelf": "Updating…",
         "action.updateAllCount": "Update all ({count})",
         "action.updatingAll": "Updating…",
         "self.available": "New version v{version} available",
@@ -1288,10 +1293,26 @@ window.__ModuleLoader__.load({
     //    结果同时喂给侧边栏角标与「可更新」页签。
     // 状态放模块级：页面打开时直接是「已检查过」的样子，不必再点一次「插件市场更新」。
     var PLUGIN_CHECK_INTERVAL_MS = 60 * 60 * 1000;
+    // 装完的「更新成功」停留时长：装完立刻跳回「插件市场更新」，用户看不到装好了这一步。
+    var SELF_DONE_MS = 3000;
     var selfCheckState = { phase: "idle", data: null, error: null, at: 0 };
     var selfCheckListeners = [];
     var installedListeners = [];
     var schedulerStarted = false;
+    var selfDoneTimer = null;
+
+    /** 装完进「更新成功」态，SELF_DONE_MS 后自动回到 idle（按钮回到「插件市场更新」）。
+     *  定时器放模块级：新装的代码要重启才生效，这里回 idle 不是谎称已生效，只是把按钮复位。 */
+    function markSelfDone() {
+      if (selfDoneTimer !== null) clearTimeout(selfDoneTimer);
+      setSelfCheck({ phase: "done", data: null, error: null, at: Date.now() });
+      selfDoneTimer = setTimeout(function () {
+        selfDoneTimer = null;
+        if (selfCheckState.phase === "done") {
+          setSelfCheck({ phase: "idle", data: null, error: null, at: Date.now() });
+        }
+      }, SELF_DONE_MS);
+    }
 
     function notifyListeners(list, payload) {
       var copy = list.slice();
@@ -2189,7 +2210,9 @@ window.__ModuleLoader__.load({
               onClick: self.available ? self.onApply : self.onCheck
             }, self.busy ? el(IconSpinner, { size: 12 })
               : self.available ? el(IconUpgrade, { size: 13 })
-                : self.phase === "ready" ? el(IconCheck, { size: 13 }) : el(IconUpgrade, { size: 13 }),
+                // ready/done 都是对勾态：检查完没有更新、装完成功——两处都得像「已确认」。
+                : (self.phase === "ready" || self.phase === "done") ? el(IconCheck, { size: 13 })
+                  : el(IconUpgrade, { size: 13 }),
               self.label || t("action.checkSelf")))),
         el("div", { className: "dshpm-drawerHint" }, t("updates.hint")),
         el("div", { className: "dshpm-drawerBody" }, body()));
@@ -2798,8 +2821,8 @@ window.__ModuleLoader__.load({
           if (!mountedRef.current) return;
           clearJob();
           var to = payload && payload.to ? payload.to : null;
-          // 装完本地版本已经变了：按钮回到「检查更新」，重启前不谎称已生效。
-          setSelfCheck({ phase: "ready", data: null, error: null });
+          // 装完先亮「更新成功」（SELF_DONE_MS 后回 idle），重启前不谎称新代码已生效。
+          markSelfDone();
           setNotice({ kind: "success", text: to ? t("notice.selfUpdated", { version: to }) : t("notice.selfCurrent", { version: target }) });
         }).catch(function (error) {
           if (!mountedRef.current) return;
@@ -2900,18 +2923,23 @@ window.__ModuleLoader__.load({
       var selfPhase = selfUpdate.phase;
       var selfInfo = selfUpdate.data || null;
       var selfAvailable = !!(selfInfo && selfInfo.updateAvailable === true);
+      // 按钮文字的状态机（用户定的四态）：初始「插件市场更新」→ 点击「正在更新…」→
+      // 装完「更新成功」（停留 SELF_DONE_MS）→ 检查完没有更新「再次检查」。
       var selfLabel = selfPhase === "checking" ? t("action.checkingSelf")
         : selfPhase === "installing" ? t("action.updatingSelf")
-          : selfAvailable ? t("action.updateSelf", { version: selfInfo.latest })
-            // 就绪且没有新版本 →「再查一次」（左边的「重新检查」是插件的，这颗是市场的，
-            // 两颗黑按钮写一样的字会分不清）。
-            : selfPhase === "ready" ? t("action.recheckSelfOnly")
-              : t("action.checkSelf");
+          : selfPhase === "done" ? t("action.selfDone")
+            : selfAvailable ? t("action.updateSelf", { version: selfInfo.latest })
+              // 就绪且没有新版本 →「再次检查」（左边的「重新检查」是插件的，这颗是市场的，
+              // 两颗黑按钮写一样的字会分不清）。
+              : selfPhase === "ready" ? t("action.recheckSelfOnly")
+                : t("action.checkSelf");
       var selfTitle = selfAvailable
         ? t("self.available", { version: selfInfo.latest })
-        : selfPhase === "ready"
-          ? t("notice.selfCurrent", { version: selfInfo && selfInfo.latest ? selfInfo.latest : version })
-          : t("action.checkSelf");
+        : selfPhase === "done"
+          ? t("action.selfDone")
+          : selfPhase === "ready"
+            ? t("notice.selfCurrent", { version: selfInfo && selfInfo.latest ? selfInfo.latest : version })
+            : t("action.checkSelf");
       var selfBusy = selfPhase === "checking" || selfPhase === "installing";
       return el("div", {
         className: "dshpm-root",

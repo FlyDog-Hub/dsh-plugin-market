@@ -94,14 +94,24 @@ try {
     patterns: [
       { urlPattern: '*plugin-market/installed*', requestStage: 'Request' },
       { urlPattern: '*plugin-market/install', requestStage: 'Request' },
+      { urlPattern: '*plugin-market/self-update*', requestStage: 'Request' },
     ],
   })
   client.on('Fetch.requestPaused', (params) => {
     const isInstall = /\/plugin-market\/install$/.test(params.request.url)
+    const isSelfCheck = /\/plugin-market\/self-update/.test(params.request.url)
     const posted = String(params.request.postData || '')
     let payload = INJECTED_INSTALLED
     let delay = 0
-    if (isInstall) {
+    if (isSelfCheck) {
+      // 右键点击要走确定性路径：CDN 慢、宿主 10 分钟缓存都会让断言变成赌运气。
+      // 这里恒定回「没有更新」→ 按钮必须走「正在更新… → 再次检查」。
+      payload = {
+        ok: true,
+        selfUpdate: { current: '1.1.4', latest: '1.1.4', updateAvailable: false, attempts: [] },
+      }
+      delay = 400 // 拖出「正在更新…」窗口，让按钮文字变化被量到
+    } else if (isInstall) {
       if (posted.includes('second-update')) {
         payload = {
           ok: false,
@@ -332,7 +342,7 @@ try {
   const paneButtons = await evaluate(client, `Array.from(document.querySelectorAll('.dshpm-updatesActions button')).map(b => b.textContent.trim())`)
   expect(
     '页头右侧初始是「检查更新」与「插件市场更新（四态之一）」两个按钮',
-    Array.isArray(paneButtons) && paneButtons.length === 2 && /^检查更新/.test(paneButtons[0] || '') && /插件市场更新|检查中|更新到|再查一次|Plugin market|Checking|Update to|Check market/.test(paneButtons[1] || ''),
+    Array.isArray(paneButtons) && paneButtons.length === 2 && /^检查更新/.test(paneButtons[0] || '') && /插件市场更新|正在更新|更新到|再次检查|Plugin market|Updating|Update to|Check again/.test(paneButtons[1] || ''),
     JSON.stringify(paneButtons),
   )
   const panePrimary = await evaluate(
@@ -346,12 +356,25 @@ try {
     `(() => { const b = Array.from(document.querySelectorAll('.dshpm-updatesActions button')); return { left: (b[0]?.textContent || '').trim(), right: (b[1]?.textContent || '').trim() }; })()`,
   )
   expect(
-    '两颗黑按钮文字不同（右键就绪态是「再查一次」，不是左键的「重新检查」）',
+    '两颗黑按钮文字不同（右键就绪态是「再次检查」，不是左键的「重新检查」）',
     !!distinctLabels?.left && !!distinctLabels?.right && distinctLabels.left !== distinctLabels.right,
     JSON.stringify(distinctLabels),
   )
   const footCount = await evaluate(client, `document.querySelectorAll('.dshpm-updatesPanel .dshpm-drawerFoot').length`)
   expect('页脚那颗独立的「重新检查」已合并进按钮（drawerFoot 不复存在）', Number(footCount) === 0, `drawerFoot ${footCount}`)
+
+  // 右键四态状态机（用户报「点不点都是一个」）：点下去必须真的换文案——
+  // 桩恒定回「没有更新」，所以最终停在「再次检查」，中间那 400ms 是「正在更新…」。
+  await evaluate(client, `(() => { const b = Array.from(document.querySelectorAll('.dshpm-updatesActions button'))[1]; if (b) b.click(); return true; })()`)
+  const duringSelfCheck = await evaluate(client, `(() => { const b = document.querySelectorAll('.dshpm-updatesActions button')[1]; return b ? { text: (b.textContent || '').trim(), busy: b.getAttribute('aria-busy') } : null; })()`)
+  expect(
+    '点右键后立即进入「正在更新…」忙碌态（文字真的变了）',
+    !!duringSelfCheck && duringSelfCheck.busy === 'true' && /正在更新|Updating/.test(duringSelfCheck.text),
+    JSON.stringify(duringSelfCheck),
+  )
+  await waitFor(client, `(() => { const b = document.querySelectorAll('.dshpm-updatesActions button')[1]; return !!b && /再次检查|Check again/.test(b.textContent); })()`, 10000, '检查完没有更新 → 按钮变成「再次检查」')
+  const afterSelfCheck = await evaluate(client, `(() => { const b = document.querySelectorAll('.dshpm-updatesActions button')[1]; return b ? (b.textContent || '').trim() : null; })()`)
+  expect('右键检查完（无更新）显示「再次检查」', /再次检查|Check again/.test(String(afterSelfCheck)), `实际：${afterSelfCheck}`)
 
   // 状态机走一遍：点「检查更新」→ 重读列表 → 检查过且有更新 → 同一颗按钮变成「一键更新（2）」。
   await evaluate(client, `(() => { const b = Array.from(document.querySelectorAll('.dshpm-updatesActions button')).find(x => /检查更新/.test(x.textContent)); if (b) b.click(); return true; })()`)
