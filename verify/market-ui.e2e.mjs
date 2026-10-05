@@ -152,6 +152,22 @@ try {
   const badge = await evaluate(client, `(() => { const b = document.querySelector('.dshpm-count'); return b ? b.textContent.trim() : null; })()`)
   expect('「更新插件」按钮上有可更新数量角标，且数字来自注入的列表', badge === '2', `实际：${badge}`)
 
+  // 用户要求：把「可更新的插件」做成页签——已安装右边再开一个（他圈的就是那个位置）。
+  const tabs = await evaluate(
+    client,
+    `Array.from(document.querySelectorAll('.dshpm-tab')).map(b => ({ text: b.textContent.trim(), active: b.getAttribute('data-active') === 'true' }))`,
+  )
+  expect(
+    '页签栏三个页签：发现 / 已安装 / 可更新（用户圈的位置就在已安装右边）',
+    Array.isArray(tabs) && tabs.length === 3 && /发现|Discover/.test(tabs[0]?.text || '') && /已安装|Installed/.test(tabs[1]?.text || ''),
+    JSON.stringify(tabs),
+  )
+  expect(
+    '第三个页签就是「可更新」（带计数角标），默认停在发现页',
+    /可更新|Updates/.test(tabs[2]?.text || '') && tabs[0]?.active === true && tabs[2]?.active === false,
+    JSON.stringify(tabs),
+  )
+
   // 用户报的「显示不全」：通知条被压成一条、文字只剩半行。
   // 根因是 flex 项的自动最小尺寸规则（非 visible 的 overflow ⇒ 自动最小尺寸 0），
   // 所以这条断言直接量 clientHeight 与 scrollHeight，而不是只看它「在不在」。
@@ -238,19 +254,18 @@ try {
   const marketBadge = await evaluate(client, `!!document.querySelector('.dshpm-badge') && document.body.innerText.includes('市场自身') || document.body.innerText.includes('@fixture/needs-update')`)
   expect('已安装页显示注入的三个 bundle', marketBadge === true)
 
-  console.log('\n[4] 展开可更新列表（逐个确认）')
+  console.log('\n[4] 点「更新插件」切到「可更新」页签（逐个确认）')
   // 用户报的「点更新插件没有任何反馈」：先把上一条提示条等没（自动收起 4.6s），
   // 这样点击后新出现的那条就必然是**本次**的回执，而不是上一次的残留。
   await waitFor(client, `document.querySelector('.dshpm-notice') === null`, 12000, '上一条提示条已自动收起')
   await evaluate(client, `document.querySelector('.dshpm-btn--updates').click(); true`)
-  await waitFor(client, `document.querySelector('.dshpm-updatesPanel[data-open="true"]') !== null`, 8000, '可更新面板展开')
-  // 展开是一次 max-height 过渡（340ms），visibility 这种离散属性在中途才翻转：
-  // 刚点完就量高度/读 innerText 会读到过渡中途的值，等它稳定下来再断言。
-  await waitFor(client, `document.querySelector('.dshpm-updatesPanel').getBoundingClientRect().height > 120`, 8000, '可更新面板展开到最终高度')
-  expect('点「更新插件」展开了可更新列表', true)
-  // 反馈一：面板必须滚进可视区——它在 DOM 里排在卡片网格之后，不滚就是「开了也看不见」。
-  await waitFor(client, `(() => { const p = document.querySelector('.dshpm-updatesPanel'); if (!p) return false; const r = p.getBoundingClientRect(); return r.top >= -1 && r.top < window.innerHeight && r.bottom > 0; })()`, 8000, '面板滚进可视区')
-  expect('展开的面板在可视区内（不是开在卡片网格下方几百像素处）', true)
+  await waitFor(client, `(() => { const t = document.querySelector('.dshpm-tab[data-active="true"]'); return !!t && /可更新|Updates/.test(t.textContent); })()`, 8000, '切到可更新页签')
+  await waitFor(client, `document.querySelector('.dshpm-updatesPanel') !== null`, 8000, '可更新页渲染出来')
+  expect('点「更新插件」切到「可更新」页签（已安装右边第三个）', true)
+  // 页签取代了抽屉：内容**整页**出现，不是叠在发现页卡片下面。
+  const cardsAfter = await evaluate(client, `document.querySelectorAll('.dshpm-card').length`)
+  expect('整页切换生效（发现页卡片已卸载，不是叠在下面）', Number(cardsAfter) === 0, `剩余卡片 ${cardsAfter}`)
+  await waitFor(client, `document.querySelector('.dshpm-updatesPanel').getBoundingClientRect().height > 120`, 8000, '可更新页展开到最终高度')
   // 反馈二：点完必须回一句话。fixture 注入了两个可更新插件，所以文案是确定的。
   await waitFor(client, `(() => { const n = document.querySelector('.dshpm-notice'); if (!n) return false; return /发现 \\d+ 个插件有新版本|全部都是最新/.test(n.innerText.replace(/\\s+/g, ' ')); })()`, 8000, '点击后提示条给出回执')
   expect('点「更新插件」后提示条给出结果回执（发现 2 个插件有新版本）', true)
@@ -273,7 +288,7 @@ try {
     '要求是逐个确认，不该出现批量入口',
   )
   const panelOpenHeight = await evaluate(client, `document.querySelector('.dshpm-updatesPanel').getBoundingClientRect().height`)
-  expect('展开后的面板有实际高度（max-height 过渡没把它压成 0）', Number(panelOpenHeight) > 120, `高度 ${panelOpenHeight}`)
+  expect('可更新页有实际高度（不是空壳）', Number(panelOpenHeight) > 120, `高度 ${panelOpenHeight}`)
 
   await screenshot(client, join(shotDir, 'market-updates-open.png'))
   console.log(`  · 截图：${join(shotDir, 'market-updates-open.png')}`)
@@ -284,50 +299,50 @@ try {
   console.log(`  · 截图：${join(shotDir, 'market-header-zoom.png')}`)
 
   console.log('\n[4b] 用户原场景：发现页（长网格）+ 矮视口下点「更新插件」')
-  // 上面那组是在「已安装」页点的，那里内容短、面板本来就在视区里——测不出
-  // 用户报的「点了没反应」。这里复现真实场景：卡片网格把页面撑得很长、视口只有 520px，
-  // 没有 scrollIntoView 的话面板开在几百像素之下，用户看到的就是「什么都没发生」。
-  await evaluate(client, `document.querySelector('.dshpm-drawerClose').click(); true`)
-  await waitFor(client, `document.querySelector('.dshpm-updatesPanel[data-open="false"]') !== null`, 8000, '面板已收起')
+  // 上面那组是在「已安装」页点的，那里内容短——测不出「点了没反应」。这里复现真实场景：
+  // 卡片网格把页面撑得很长、视口只有 520px。页签切过去之后内容从页签正下方开始，
+  // 不用任何滚动就看得见（旧版抽屉开在几百像素之下，看上去就是「什么都没发生」）。
   await evaluate(client, `Array.from(document.querySelectorAll('.dshpm-tab')).find(b => /发现|Discover/.test(b.textContent)).click(); true`)
   await waitFor(client, `!!document.querySelector('.dshpm-card')`, 30000, '发现页卡片渲染出来（页面变长）')
   await client.send('Emulation.setDeviceMetricsOverride', { width: 1200, height: 520, deviceScaleFactor: 1, mobile: false })
   await evaluate(client, `document.querySelector('.dshpm-btn--updates').click(); true`)
-  await waitFor(client, `document.querySelector('.dshpm-updatesPanel[data-open="true"]') !== null`, 8000, '矮视口下面板展开')
-  await waitFor(client, `(() => { const p = document.querySelector('.dshpm-updatesPanel'); if (!p) return false; const r = p.getBoundingClientRect(); return r.top >= -1 && r.top < window.innerHeight && r.bottom > 0; })()`, 8000, '矮视口下面板滚进可视区')
-  expect('发现页 + 520px 视口：面板展开后仍在可视区内（由 scrollIntoView 滚过去）', true)
+  await waitFor(client, `document.querySelector('.dshpm-updatesPanel') !== null`, 8000, '矮视口下可更新页渲染')
+  await waitFor(client, `(() => { const p = document.querySelector('.dshpm-updatesPanel'); if (!p) return false; const r = p.getBoundingClientRect(); return r.top >= -1 && r.top < window.innerHeight && r.bottom > 0; })()`, 8000, '可更新页在视区内')
+  expect('发现页 + 520px 视口：切过去后内容整页出现且在视区内（无需滚动）', true)
   await screenshot(client, join(shotDir, 'market-updates-short-viewport.png'))
   console.log(`  · 截图：${join(shotDir, 'market-updates-short-viewport.png')}`)
-  // 还原到 [5] 期望的状态：视口回默认、页签回到已安装，面板保持展开交给 [5] 去收。
+  // 还原视口；页签交给 [5] 去切回已安装。
   await client.send('Emulation.clearDeviceMetricsOverride')
-  await evaluate(client, `Array.from(document.querySelectorAll('.dshpm-tab')).find(b => /已安装|Installed/.test(b.textContent)).click(); true`)
 
-  console.log('\n[5] 收起与自更新按钮的状态文案')
-  await evaluate(client, `document.querySelector('.dshpm-drawerClose').click(); true`)
-  await waitFor(client, `document.querySelector('.dshpm-updatesPanel[data-open="false"]') !== null`, 8000, '可更新面板收起')
-  await waitFor(client, `document.querySelector('.dshpm-updatesPanel').getBoundingClientRect().height < 8`, 8000, '面板高度收回 0')
-  const closedHeight = await evaluate(client, `document.querySelector('.dshpm-updatesPanel').getBoundingClientRect().height`)
-  expect('收起后面板高度归零（内容不再占位）', Number(closedHeight) < 8, `高度 ${closedHeight}`)
-  await screenshot(client, join(shotDir, 'market-header-closed.png'))
-  console.log(`  · 截图：${join(shotDir, 'market-header-closed.png')}`)
+  console.log('\n[5] 页签来回切（可更新 → 已安装）')
+  await evaluate(client, `Array.from(document.querySelectorAll('.dshpm-tab')).find(b => /已安装|Installed/.test(b.textContent)).click(); true`)
+  await waitFor(client, `document.querySelector('.dshpm-row') !== null`, 8000, '已安装页切回来')
+  const backRows = await evaluate(client, `document.querySelectorAll('.dshpm-row').length`)
+  expect('切回「已安装」后列表回来（页签可来回切）', Number(backRows) >= 3, `行数 ${backRows}`)
+  const stalePanel = await evaluate(client, `document.querySelectorAll('.dshpm-updatesPanel').length`)
+  expect('切走后可更新页已卸载（同一时间只有一个页签的内容在 DOM 里）', Number(stalePanel) === 0, `残留 ${stalePanel}`)
+  await screenshot(client, join(shotDir, 'market-tab-installed.png'))
+  console.log(`  · 截图：${join(shotDir, 'market-tab-installed.png')}`)
 
   console.log('\n[6] prefers-reduced-motion：关掉动效但内容仍在')
   await client.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] })
   const reduceActive = await evaluate(client, `matchMedia('(prefers-reduced-motion: reduce)').matches`)
   expect('前置条件：偏好确实被切成 reduce', reduceActive === true, `实际 reduce=${reduceActive}`)
   await evaluate(client, `document.querySelector('.dshpm-btn--updates').click(); true`)
+  await waitFor(client, `document.querySelector('.dshpm-updatesPanel') !== null`, 8000, '可更新页渲染出来')
   await new Promise((resolve) => setTimeout(resolve, 400))
   const reduced = await evaluate(
     client,
     `(() => {
-       const row = document.querySelector('.dshpm-row');
+       const row = document.querySelector('.dshpm-updateRow');
        const s = row ? getComputedStyle(row) : null;
        const panel = document.querySelector('.dshpm-updatesPanel');
-       return { anim: s ? s.animationName : null, transition: s ? s.transitionDuration : null, panelVisible: panel ? getComputedStyle(panel).visibility : null, rows: document.querySelectorAll('.dshpm-updatesPanel .dshpm-updateRow:not(.dshpm-updateRow--ghost)').length, installedRows: document.querySelectorAll('.dshpm-row').length };
+       const ps = panel ? getComputedStyle(panel) : null;
+       return { rowAnim: s ? s.animationName : null, panelAnim: ps ? ps.animationName : null, panelVisible: panel ? getComputedStyle(panel).visibility : null, rows: document.querySelectorAll('.dshpm-updatesPanel .dshpm-updateRow:not(.dshpm-updateRow--ghost)').length };
      })()`,
   )
-  expect('reduced-motion 下动画被关掉（animation-name: none）', reduced?.anim === 'none', JSON.stringify(reduced))
-  expect('reduced-motion 下内容仍然可见（列表行还在，面板不是隐藏的）', reduced?.rows === 2 && reduced?.panelVisible === 'visible' && Number(reduced?.installedRows) >= 3, JSON.stringify(reduced))
+  expect('reduced-motion 下动画被关掉（animation-name: none）', reduced?.rowAnim === 'none' && reduced?.panelAnim === 'none', JSON.stringify(reduced))
+  expect('reduced-motion 下内容仍然可见（两条更新记录都在、页面不是隐藏的）', reduced?.rows === 2 && reduced?.panelVisible === 'visible', JSON.stringify(reduced))
   await screenshot(client, join(shotDir, 'market-reduced-motion.png'))
 
   console.log('\n[7] 控制台错误')
@@ -338,12 +353,10 @@ try {
   // 而不是把某个带 overflow 的子项（自动最小尺寸 0）压扁。
   console.log('\n[8] 窄高视口下不得压扁任何区块')
   await client.send('Emulation.setDeviceMetricsOverride', { width: 1200, height: 520, deviceScaleFactor: 1, mobile: false })
-  await evaluate(
-    client,
-    `(() => { const p = document.querySelector('.dshpm-updatesPanel'); if (p && p.getAttribute('data-open') === 'false') document.querySelector('.dshpm-btn--updates').click(); return true; })()`,
-  )
-  await waitFor(client, `document.querySelector('.dshpm-updatesPanel[data-open="true"]') !== null`, 8000, '窄高视口下面板展开')
-  await waitFor(client, `document.querySelector('.dshpm-updatesPanel').getBoundingClientRect().height > 120`, 8000, '面板高度稳定')
+  // 用「发现」页测：它内容最长，才是「视口矮到必然溢出」的那个场景。
+  await evaluate(client, `Array.from(document.querySelectorAll('.dshpm-tab')).find(b => /发现|Discover/.test(b.textContent)).click(); true`)
+  await waitFor(client, `document.querySelectorAll('.dshpm-card').length > 0`, 30000, '发现页卡片渲染出来')
+  await waitFor(client, `document.querySelector('.dshpm-grid').getBoundingClientRect().height > 200`, 8000, '目录网格高度稳定')
   const squeezed = await evaluate(
     client,
     `(() => {

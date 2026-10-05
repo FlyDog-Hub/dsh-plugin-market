@@ -176,16 +176,30 @@ check('自更新按钮在文案上区分检查中/已是最新/可更新/更新�
   assert.match(source, /selfAvailable \? t\("action\.updateSelf"/)
   assert.match(source, /selfPhase === "ready" \? t\("action\.selfCurrent"\)/)
 })
-check('「更新插件」与「检查市场更新」同款反馈：忙碌态 + 结果回执 + 展开后滚进视区', () => {
-  // 用户报过「点更新插件没有任何反馈」：面板排在卡片网格之后，展开在视区外，
-  // 且不重读就没有提示条——这三条断言把「点了必须有反应」钉在源码层。
+check('「更新插件」点了必须有反应：切到「可更新」页签 + 忙碌态 + 结果回执', () => {
+  // 用户先报「点更新插件没有任何反馈」，后来又要求把它做成页签（已安装右边那个位置）。
+  // 现在「有反应」由两件事保证：整页内容出现（切页签）+ 重读完成必定给一句话。
+  assert.match(source, /function goUpdates\(\)/, '头部按钮应有唯一入口 goUpdates')
+  assert.match(source, /setTab\("updates"\)/, '点按钮必须切到「可更新」页签')
   assert.match(source, /updatesBusy \? el\(IconSpinner/, '按钮在检查中要转圈')
   assert.match(source, /updatesBusy \? t\("action\.checkingUpdates"\)/, '按钮在检查中要换文案')
   assert.match(source, /"aria-busy": updatesBusy \? "true" : "false"/, '按钮要暴露 aria-busy')
   assert.match(source, /loadInstalled\(\{ announce: true \}\)/, '点按钮要触发带回执的重读')
   assert.match(source, /t\("notice\.updatesFound"/, '有更新要给回执')
   assert.match(source, /t\("notice\.updatesNone"/, '没有更新也要给回执')
-  assert.match(source, /scrollIntoView/, '展开后要把面板滚进可视区')
+})
+check('第三个页签「可更新」：排在已安装右边、带计数角标、切过去渲染整页内容', () => {
+  const discoverAt = source.indexOf('t("tab.discover")')
+  const installedAt = source.indexOf('t("tab.installed")')
+  const updatesAt = source.indexOf('t("tab.updates")')
+  assert.ok(discoverAt > 0 && installedAt > discoverAt, '页签顺序：发现 → 已安装')
+  assert.ok(updatesAt > installedAt, '页签顺序：已安装 → 可更新（用户圈的位置）')
+  assert.match(source, /el\(UpdatesPane/, '第三个页签要渲染自己的页面组件')
+  assert.ok(source.indexOf('el(UpdatesPane') > updatesAt, '页面组件在页签之后渲染（同一份 tab switch）')
+  // 抽屉必须退场：页签取代了它，不能两套并存
+  assert.equal(source.includes('UpdatesDrawer'), false, '抽屉组件应已移除（由页签取代）')
+  assert.equal(source.includes('scrollIntoView'), false, '不再需要滚动定位：内容现在整页出现')
+  assert.match(source, /updateCount > 0 \? el\("span", \{ className: "dshpm-count" \}/, '页签要带可更新计数角标')
 })
 
 console.log('')

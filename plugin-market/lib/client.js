@@ -36,6 +36,7 @@ window.__ModuleLoader__.load({
         "market.entry.disabled": "布局服务不可用，暂时无法打开市场",
         "tab.discover": "发现",
         "tab.installed": "已安装",
+        "tab.updates": "可更新",
         "action.refresh": "刷新目录",
         "action.refreshing": "刷新中…",
         "action.retry": "重试",
@@ -263,6 +264,7 @@ window.__ModuleLoader__.load({
         "market.entry.disabled": "The layout service is unavailable, so the market cannot open",
         "tab.discover": "Discover",
         "tab.installed": "Installed",
+        "tab.updates": "Updates",
         "action.refresh": "Refresh catalog",
         "action.refreshing": "Refreshing…",
         "action.retry": "Retry",
@@ -1045,14 +1047,14 @@ window.__ModuleLoader__.load({
 .dshpm-progress::after { content:""; position:absolute; top:0; bottom:0; width:38%; border-radius:2px; background:var(--dsw-alias-brand-primary,#4d6bfe); animation:dshpm-slide 1.15s cubic-bezier(.4,0,.2,1) infinite; }
 
 /* ── 可更新插件面板：就地展开，不遮挡列表、不制造第二个滚动容器 ── */
-.dshpm-updatesPanel { display:flex; flex-direction:column; gap:10px; box-sizing:border-box; overflow:hidden; max-height:1600px; padding:12px 14px; border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.1)); border-radius:var(--dsw-radius-md,10px); background:var(--dsw-alias-bg-layer-1,transparent); transform-origin:top center; transition:max-height .34s cubic-bezier(.22,1,.36,1), opacity .2s ease, visibility .34s, padding .3s ease; }
-.dshpm-updatesPanel[data-open="false"] { max-height:0; padding-top:0; padding-bottom:0; border-width:0; opacity:0; visibility:hidden; pointer-events:none; }
+/* 可更新页是**整页页签**，不再是会折叠的抽屉：所以这里不写 max-height / overflow:hidden——
+   那两样是为了「收起时高度归 0」，留着反而会把很长的更新列表裁掉（列表高 > 1600px 时）。 */
+.dshpm-updatesPanel { display:flex; flex-direction:column; gap:10px; box-sizing:border-box; padding:12px 14px; border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.1)); border-radius:var(--dsw-radius-md,10px); background:var(--dsw-alias-bg-layer-1,transparent); }
 .dshpm-drawerHead { display:flex; align-items:flex-start; gap:8px; }
 .dshpm-drawerIcon { flex:none; display:inline-flex; margin-top:2px; color:var(--dsw-alias-brand-primary,#4d6bfe); }
 .dshpm-drawerHeading { flex:1 1 auto; min-width:0; }
 .dshpm-drawerTitle { font-weight:600; }
 .dshpm-drawerSubtitle { color:var(--dsw-alias-label-secondary,#6b6b6b); font-size:.82em; }
-.dshpm-drawerClose { flex:none; }
 .dshpm-drawerHint { color:var(--dsw-alias-label-secondary,#6b6b6b); font-size:.79em; }
 .dshpm-drawerBody { display:flex; flex-direction:column; gap:8px; }
 .dshpm-drawerList { display:flex; flex-direction:column; gap:8px; }
@@ -1117,7 +1119,7 @@ window.__ModuleLoader__.load({
 .dshpm-tag { transition:background-color .16s ease; }
 .dshpm-switch { transition:background-color .2s ease; }
 .dshpm-count[data-pop="true"] { animation:dshpm-pop .34s cubic-bezier(.22,1,.36,1) backwards, dshpm-breathe 2.6s ease-in-out 3; }
-.dshpm-updatesPanel[data-open="true"] { animation:dshpm-expand .3s cubic-bezier(.22,1,.36,1) backwards; }
+.dshpm-updatesPage { animation:dshpm-rise .3s cubic-bezier(.22,1,.36,1) backwards; }
 .dshpm-skeleton { animation:dshpm-shimmer 1.3s linear infinite; }
 /* overflow 只为那条倒计时线服务（线贴底、要被圆角裁掉）。定位写在上面的基础规则里：fixed。
    注意别再给它写 position:relative——后面的规则会盖掉 fixed，气泡就掉回文档流里了。 */
@@ -1912,12 +1914,11 @@ window.__ModuleLoader__.load({
       { id: "name", key: "sort.name" }
     ];
 
-    // ───────────────────────────── 可更新插件抽屉 ─────────────────────────────
-    // 「更新插件」按钮只负责**提示**：这里列出哪些装了新版本，每一条都要用户自己点。
-    // 一次只改动一个依赖，失败不影响其余——比「一键全更新」更保守，也更好排查。
-    // 关闭时节点留在 DOM 里只切 data-open，进出都有过渡动画。
-    var UpdatesDrawer = function UpdatesDrawer(props) {
-      var open = props.open === true;
+    // ───────────────────── 可更新插件页（第三个页签：发现 / 已安装 / 可更新） ─────────────────────
+    // 由「头部按钮就地展开的抽屉」搬成页签——就是用户圈的那个位置（已安装右边再开一个）。
+    // 内容一字未改：列出哪些装了新版本，**每一条都要用户自己点**。一次只改动一个依赖，
+    // 失败不影响其余，比「一键全更新」保守，也更好排查。
+    function UpdatesPane(props) {
       var state = props.state || {};
       var bundles = props.bundles || [];
       var results = props.results || {};
@@ -1998,23 +1999,14 @@ window.__ModuleLoader__.load({
       }
 
       return el("section", {
-        className: "dshpm-updatesPanel",
-        "data-open": open ? "true" : "false",
-        "aria-hidden": open ? "false" : "true",
-        "aria-label": t("updates.title"),
-        ref: props.panelRef
+        className: "dshpm-updatesPanel dshpm-updatesPage",
+        "aria-label": t("updates.title")
       },
         el("div", { className: "dshpm-drawerHead" },
           el("span", { className: "dshpm-drawerIcon" }, el(IconLayers, { size: 15 })),
           el("div", { className: "dshpm-drawerHeading" },
             el("div", { className: "dshpm-drawerTitle" }, t("updates.title")),
-            el("div", { className: "dshpm-drawerSubtitle" }, subtitle)),
-          el("button", {
-            type: "button",
-            className: "dshpm-btn dshpm-btn--quiet dshpm-drawerClose",
-            "aria-label": t("action.hideDetails"),
-            onClick: props.onClose
-          }, el(IconClose, { size: 13 }))),
+            el("div", { className: "dshpm-drawerSubtitle" }, subtitle))),
         el("div", { className: "dshpm-drawerHint" }, t("updates.hint")),
         el("div", { className: "dshpm-drawerBody" }, body()),
         el("div", { className: "dshpm-drawerFoot" },
@@ -2102,13 +2094,7 @@ window.__ModuleLoader__.load({
       var selfUpdate = selfState[0];
       var setSelfUpdate = selfState[1];
 
-      var drawerState = React.useState(false);
-      var drawerOpen = drawerState[0];
-      var setDrawerOpen = drawerState[1];
-      /** 面板排在整张卡片网格**之后**：不滚过去，展开了用户也看不见（像「点了没反应」）。 */
-      var drawerPanelRef = React.useRef(null);
-
-      // 抽屉里每一条的更新结果，按包名记：进度与成功/失败都留在原地，不用去翻提示条。
+      // 可更新页里每一条的更新结果，按包名记：进度与成功/失败都留在原地，不用去翻提示条。
       var updateResultsState = React.useState({});
       var updateResults = updateResultsState[0];
       var setUpdateResults = updateResultsState[1];
@@ -2519,34 +2505,15 @@ window.__ModuleLoader__.load({
       }
 
       /**
-       * 打开抽屉时重读一次已安装列表：角标与列表都基于新数据。
+       * 点「更新插件」= 切到「可更新」页签并重读一次已安装列表：角标与列表都基于新数据。
        * announce：这次是用户点出来的，**无论有没有更新都要回一句话**——「检查市场更新」
        * 一直是这么做的，同一个头部的两个按钮不该一个有反馈、一个静默。
+       * （页签本身就是反馈：内容整页出现，不用再把面板滚进可视区。）
        */
-      function openUpdates() {
-        setDrawerOpen(true);
+      function goUpdates() {
+        setTab("updates");
         loadInstalled({ announce: true });
       }
-
-      function closeUpdates() {
-        setDrawerOpen(false);
-      }
-
-      // 展开后把面板滚进可视区（面板在 DOM 里排在目录网格之后）；用户偏好减少动效时
-      // 直接跳位，不放平滑滚动。
-      React.useEffect(function () {
-        if (!drawerOpen) return undefined;
-        var node = drawerPanelRef.current;
-        if (!node || typeof node.scrollIntoView !== "function") return undefined;
-        var reduce = typeof window !== "undefined" && typeof window.matchMedia === "function"
-          && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-        try {
-          node.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "nearest" });
-        } catch (scrollError) {
-          node.scrollIntoView();
-        }
-        return undefined;
-      }, [drawerOpen]);
 
       function toggleDetails(key) {
         setExpanded(function (previous) {
@@ -2607,8 +2574,9 @@ window.__ModuleLoader__.load({
         : null;
       var refreshing = !!job && job.kind === "refresh";
       var busyKey = job ? job.key : null;
-      // 「检查中」只在玩家点开抽屉、重读在途时亮：与「检查市场更新」的 checking 态同款反馈。
-      var updatesBusy = drawerOpen && installed.phase === "loading";
+      // 「检查中」只在「可更新」页签上的重读在途时亮：与「检查市场更新」的 checking 态同款反馈。
+      // 页签没切过去时不亮——那次是后台刷新，不该让头部按钮跟着闪。
+      var updatesBusy = tab === "updates" && installed.phase === "loading";
 
       // ── 头部两个按钮与抽屉要用的派生值 ──
       var installedPayload = installed.data || {};
@@ -2636,8 +2604,7 @@ window.__ModuleLoader__.load({
       var selfBusy = selfPhase === "checking" || selfPhase === "installing";
       return el("div", {
         className: "dshpm-root",
-        "data-busy": job ? "true" : "false",
-        "data-drawer": drawerOpen ? "true" : "false"
+        "data-busy": job ? "true" : "false"
       },
         // 任何操作进行中都在顶部走一条不确定性进度条：安装/卸载/刷新/自更新共用。
         job ? el("div", { className: "dshpm-progress", "aria-hidden": "true" }) : null,
@@ -2656,13 +2623,10 @@ window.__ModuleLoader__.load({
             el("button", {
               type: "button",
               className: "dshpm-btn dshpm-btn--updates" + (updateCount > 0 ? " dshpm-btn--attention" : ""),
-              "aria-haspopup": "dialog",
-              "aria-expanded": drawerOpen ? "true" : "false",
               "aria-busy": updatesBusy ? "true" : "false",
-              "data-open": drawerOpen ? "true" : "false",
               disabled: updatesBusy,
               title: t("updates.title"),
-              onClick: function () { if (drawerOpen) closeUpdates(); else openUpdates(); }
+              onClick: goUpdates
             }, updatesBusy ? el(IconSpinner, { size: 13 }) : el(IconDownload, { size: 13 }),
               el("span", null, updatesBusy ? t("action.checkingUpdates") : t("action.updates")),
               updateCount > 0 ? el("span", { className: "dshpm-count", "data-pop": "true" }, String(updateCount)) : null),
@@ -2708,6 +2672,8 @@ window.__ModuleLoader__.load({
             el("div", { className: "dshpm-bannerActions" },
               el("button", { type: "button", className: "dshpm-btn", disabled: refreshing, onClick: refreshCatalog }, t("catalog.stale.refresh"))))
           : null,
+        // 三个页签：发现 / 已安装 / **可更新**（用户圈的位置——已安装右边再开一个）。
+        // 「可更新」上的角标与头部按钮、侧边栏入口共用同一份计数。
         el("div", { className: "dshpm-tabs", role: "tablist" },
           el("button", {
             type: "button",
@@ -2724,7 +2690,16 @@ window.__ModuleLoader__.load({
             "data-active": tab === "installed" ? "true" : "false",
             "aria-selected": tab === "installed" ? "true" : "false",
             onClick: function () { setTab("installed"); }
-          }, t("tab.installed"))),
+          }, t("tab.installed")),
+          el("button", {
+            type: "button",
+            role: "tab",
+            className: "dshpm-tab",
+            "data-active": tab === "updates" ? "true" : "false",
+            "aria-selected": tab === "updates" ? "true" : "false",
+            onClick: function () { setTab("updates"); }
+          }, t("tab.updates"),
+            updateCount > 0 ? el("span", { className: "dshpm-count" }, String(updateCount)) : null)),
         tab === "discover"
           ? el(DiscoverPane, {
             state: discover,
@@ -2749,37 +2724,35 @@ window.__ModuleLoader__.load({
             onCopy: copyCommand,
             onRetry: function () { bumpTick(); }
           })
-          : el(InstalledPane, {
-            state: installed,
-            expanded: expanded,
-            confirming: confirming,
-            readOnly: readOnly,
-            busyKey: busyKey,
-            onDiscover: function () { setTab("discover"); },
-            onToggleBundle: toggleBundle,
-            onUpdateBundle: updateBundle,
-            onAskRemove: setConfirming,
-            onRemoveBundle: removeBundle,
-            onToggleDetails: toggleDetails,
-            onToggleEntry: toggleEntry,
-            onRetry: function () { bumpTick(); }
-          }),
-        el(UpdatesDrawer, {
-          open: drawerOpen,
-          panelRef: drawerPanelRef,
-          state: installed,
-          bundles: updateBundles,
-          count: updateCount,
-          installedCount: allBundles.length,
-          catalogUpdated: catalogMeta && catalogMeta.updated ? catalogMeta.updated : null,
-          results: updateResults,
-          busyKey: busyKey,
-          readOnly: readOnly,
-          onUpdate: updateBundle,
-          onClose: closeUpdates,
-          onReload: function () { loadInstalled(); },
-          onRefreshCatalog: refreshCatalog
-        })
+          : tab === "installed"
+            ? el(InstalledPane, {
+              state: installed,
+              expanded: expanded,
+              confirming: confirming,
+              readOnly: readOnly,
+              busyKey: busyKey,
+              onDiscover: function () { setTab("discover"); },
+              onToggleBundle: toggleBundle,
+              onUpdateBundle: updateBundle,
+              onAskRemove: setConfirming,
+              onRemoveBundle: removeBundle,
+              onToggleDetails: toggleDetails,
+              onToggleEntry: toggleEntry,
+              onRetry: function () { bumpTick(); }
+            })
+            : el(UpdatesPane, {
+              state: installed,
+              bundles: updateBundles,
+              count: updateCount,
+              installedCount: allBundles.length,
+              catalogUpdated: catalogMeta && catalogMeta.updated ? catalogMeta.updated : null,
+              results: updateResults,
+              busyKey: busyKey,
+              readOnly: readOnly,
+              onUpdate: updateBundle,
+              onReload: function () { loadInstalled({ announce: true }); },
+              onRefreshCatalog: refreshCatalog
+            })
       );
     }
 
