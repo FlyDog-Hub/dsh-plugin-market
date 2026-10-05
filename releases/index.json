@@ -1,19 +1,29 @@
 {
-    "name":  "dsh-plugin-market",
+    "name":  "deepseek-harness-market",
     "channel":  "jsdelivr",
     "repo":  "Winnie-0721/dsh-plugin-market",
-    "updatedAt":  "2026-10-04T10:51:02Z",
+    "updatedAt":  "2026-10-05T14:00:13Z",
     "latest":  {
-                   "version":  "1.1.3",
-                   "tag":  "v1.1.3",
-                   "versionCode":  10103,
-                   "build":  "+29.af4495d",
-                   "tarball":  "releases/dsh-plugin-market-1.1.3.tgz",
-                   "sha256":  "01ad23b86564ccbd2fca51ce1b2a4c9d0457a479ea83e235f56690b123016f88",
-                   "bytes":  446598,
-                   "releasedAt":  "2026-10-04T10:51:02Z"
+                   "version":  "1.1.4",
+                   "tag":  "v1.1.4",
+                   "versionCode":  10104,
+                   "build":  "+46.0bf0058",
+                   "tarball":  "releases/deepseek-harness-market-1.1.4.tgz",
+                   "sha256":  "cfc2a2a8bdbe160b0f8f29abb8b96c85f543e1ff579c7a142a6df14bf479e370",
+                   "bytes":  464071,
+                   "releasedAt":  "2026-10-05T14:00:13Z"
                },
     "versions":  [
+                     {
+                         "version":  "1.1.4",
+                         "tag":  "v1.1.4",
+                         "versionCode":  10104,
+                         "build":  "+46.0bf0058",
+                         "tarball":  "releases/deepseek-harness-market-1.1.4.tgz",
+                         "sha256":  "cfc2a2a8bdbe160b0f8f29abb8b96c85f543e1ff579c7a142a6df14bf479e370",
+                         "bytes":  464071,
+                         "releasedAt":  "2026-10-05T14:00:13Z"
+                     },
                      {
                          "version":  "1.1.3",
                          "tag":  "v1.1.3",
