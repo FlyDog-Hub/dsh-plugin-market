@@ -21,6 +21,8 @@ window.__ModuleLoader__.load({
     var SEARCH_DEBOUNCE_MS = 300;
     /** 成功/信息类提示的存活时间：与 .dshpm-noticeTimer 的动画时长必须一致。 */
     var NOTICE_DISMISS_MS = 4600;
+    /** 退场动画时长：与 .dshpm-notice[data-open="false"] 的 transition 时长一致。 */
+    var NOTICE_CLOSE_MS = 200;
     var PAGE_SIZE = 24;
     var MAX_QUERY_LENGTH = 128;
 
@@ -221,15 +223,17 @@ window.__ModuleLoader__.load({
         "action.recheckSelf": "重新检查",
         "action.updateSelf": "更新到 {version}",
         "action.updatingSelf": "正在更新市场…",
-        "action.updates": "更新插件",
-        "action.checkingUpdates": "检查更新中…",
+        "action.updateAll": "一键更新",
+        "action.updateAllCount": "一键更新（{count}）",
+        "action.updatingAll": "更新中…",
         "self.available": "发现新版本 v{version}",
         "self.linkNote": "安装会把本机的 link: 依赖替换为下载并校验过的本地包；要回到开发目录，再把这个路径 add 回来。",
         "updates.title": "可更新的插件",
         "updates.entryBadge": "{count} 个插件可更新",
         "updates.subtitle": "已安装 {installed} 个 · {count} 个有新版本",
         "updates.subtitleEmpty": "已安装 {installed} 个 · 全部最新",
-        "updates.hint": "逐个确认：一次只改动你点的那一个依赖，失败不影响其余。",
+        "updates.batchProgress": "一键更新中 {done}/{total}…",
+        "updates.hint": "逐个确认更稳（一次只改动一个依赖）；「一键更新」按顺序逐个跑，失败不影响其余。",
         "updates.loading": "正在读取已安装列表…",
         "updates.empty.title": "全部都是最新",
         "updates.empty.body": "已安装的插件都没有可用更新。目录数据更新于 {updated}。",
@@ -238,7 +242,10 @@ window.__ModuleLoader__.load({
         "updates.noCatalog.title": "目录还没就绪",
         "updates.noCatalog.body": "要判断有没有新版本，得先把目录读进来：点「刷新目录」后重试。",
         "updates.failed": "{name} 更新失败",
-        "notice.updatesFound": "发现 {count} 个插件有新版本，点「更新插件」逐个确认。",
+        "notice.updatesFound": "发现 {count} 个插件有新版本，可逐个「更新到 x.y.z」或点「一键更新」。",
+        "notice.updateAllStart": "开始逐个更新 {count} 个插件…",
+        "notice.updateAllDone": "一键更新完成：成功 {ok} 个、失败 {fail} 个。",
+        "notice.updateAllNone": "没有需要更新的插件。",
         "notice.updatesNone": "已检查 {installed} 个插件：全部都是最新版本。",
         "notice.selfFound": "插件市场有新版本 v{version}：点「更新到 {version}」安装。",
         "notice.selfCurrent": "插件市场已是最新（v{version}）。",
@@ -449,15 +456,17 @@ window.__ModuleLoader__.load({
         "action.recheckSelf": "Check again",
         "action.updateSelf": "Update to {version}",
         "action.updatingSelf": "Updating the market…",
-        "action.updates": "Plugin updates",
-        "action.checkingUpdates": "Checking…",
+        "action.updateAll": "Update all",
+        "action.updateAllCount": "Update all ({count})",
+        "action.updatingAll": "Updating…",
         "self.available": "New version v{version} available",
         "self.linkNote": "Installing replaces this machine's link: dependency with the verified local package; add the source path back to return to it.",
         "updates.title": "Plugin updates",
         "updates.entryBadge": "{count} plugins can update",
         "updates.subtitle": "{installed} installed · {count} have a newer version",
         "updates.subtitleEmpty": "{installed} installed · all up to date",
-        "updates.hint": "Confirm one at a time: each update changes only the dependency you click, and a failure leaves the rest alone.",
+        "updates.batchProgress": "Updating {done}/{total}…",
+        "updates.hint": "Confirm one at a time (each change touches a single dependency), or use Update all to run them in order — a failure leaves the rest alone.",
         "updates.loading": "Reading installed plugins…",
         "updates.empty.title": "Everything is up to date",
         "updates.empty.body": "No installed plugin has a newer version. Catalog data is from {updated}.",
@@ -466,7 +475,10 @@ window.__ModuleLoader__.load({
         "updates.noCatalog.title": "The catalog is not ready",
         "updates.noCatalog.body": "Deciding whether a newer version exists needs the catalog: refresh it and try again.",
         "updates.failed": "{name} failed to update",
-        "notice.updatesFound": "{count} plugins have a newer version — open Plugin updates to confirm them one by one.",
+        "notice.updatesFound": "{count} plugins have a newer version — confirm them one by one, or use Update all.",
+        "notice.updateAllStart": "Updating {count} plugins, one at a time…",
+        "notice.updateAllDone": "Update all finished: {ok} succeeded, {fail} failed.",
+        "notice.updateAllNone": "Nothing to update.",
         "notice.updatesNone": "Checked {installed} plugins: all of them are up to date.",
         "notice.selfFound": "Plugin market v{version} is available: click “Update to {version}”.",
         "notice.selfCurrent": "The plugin market is up to date (v{version}).",
@@ -987,7 +999,9 @@ window.__ModuleLoader__.load({
 /* ── 回执气泡（Android toast 那种）：position:fixed 悬在视口**底部居中**，不占文档流——
    出现或消失都不推动布局，也不用滚动才看得见。旧版是页内提示条：挤在头部下面一格，
    还得靠根节点滚到那一页才看得见。kind 仍用 data-kind 表达，图标配色不变。 */
-.dshpm-notice { position:fixed; left:0; right:0; bottom:24px; z-index:60; display:flex; align-items:flex-start; gap:8px; box-sizing:border-box; width:fit-content; max-width:min(560px, calc(100vw - 32px)); margin:0 auto; padding:9px 12px; border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.1)); border-left-width:3px; border-radius:14px; background:var(--dsw-alias-bg-layer-2,rgba(255,255,255,.96)); box-shadow:0 8px 28px rgba(0,0,0,.18); font-size:.84em; }
+.dshpm-notice { position:fixed; left:0; right:0; bottom:24px; z-index:60; display:flex; align-items:flex-start; gap:8px; box-sizing:border-box; width:fit-content; max-width:min(560px, calc(100vw - 32px)); margin:0 auto; padding:10px 14px; border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.1)); border-left-width:3px; border-radius:16px; background:var(--dsw-alias-bg-layer-2,rgba(255,255,255,.94)); backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px); box-shadow:0 10px 34px rgba(0,0,0,.16), 0 2px 8px rgba(0,0,0,.08); font-size:.84em; line-height:1.5; transition:opacity .2s ease, transform .2s ease; }
+/* 退场：先沉下去再卸载（由 data-open 翻转触发，200ms 后组件才真正消失）。 */
+.dshpm-notice[data-open="false"] { opacity:0; transform:translateY(10px) scale(.97); }
 .dshpm-notice[data-kind="success"] { border-left-color:var(--dsw-alias-state-success-primary,#1f9d55); }
 .dshpm-notice[data-kind="warn"] { border-left-color:var(--dsw-alias-state-warn-primary,#b7791f); }
 .dshpm-notice[data-kind="error"] { border-left-color:var(--dsw-alias-state-error-primary,#d93025); }
@@ -1051,6 +1065,8 @@ window.__ModuleLoader__.load({
    那两样是为了「收起时高度归 0」，留着反而会把很长的更新列表裁掉（列表高 > 1600px 时）。 */
 .dshpm-updatesPanel { display:flex; flex-direction:column; gap:10px; box-sizing:border-box; padding:12px 14px; border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.1)); border-radius:var(--dsw-radius-md,10px); background:var(--dsw-alias-bg-layer-1,transparent); }
 .dshpm-drawerHead { display:flex; align-items:flex-start; gap:8px; }
+/* 可更新页页头右侧的两个按钮（一键更新 / 检查市场更新），窄屏下换行到标题下面。 */
+.dshpm-updatesActions { flex:none; display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-left:auto; }
 .dshpm-drawerIcon { flex:none; display:inline-flex; margin-top:2px; color:var(--dsw-alias-brand-primary,#4d6bfe); }
 .dshpm-drawerHeading { flex:1 1 auto; min-width:0; }
 .dshpm-drawerTitle { font-weight:600; }
@@ -1106,7 +1122,7 @@ window.__ModuleLoader__.load({
 .dshpm-tab[data-active="true"] { border-bottom-color:transparent; }
 .dshpm-tab::after { content:""; position:absolute; left:10px; right:10px; bottom:0; height:2px; border-radius:2px; background:var(--dsw-alias-brand-primary,#4d6bfe); transform:scaleX(0); transform-origin:right center; transition:transform .26s cubic-bezier(.22,1,.36,1); }
 .dshpm-tab[data-active="true"]::after { transform:scaleX(1); transform-origin:left center; }
-.dshpm-notice { animation:dshpm-toastin .26s cubic-bezier(.22,1,.36,1) backwards; }
+.dshpm-notice { animation:dshpm-toastin .3s cubic-bezier(.2,1.25,.35,1) backwards; }
 .dshpm-banner { animation:dshpm-rise .28s cubic-bezier(.22,1,.36,1) backwards; }
 .dshpm-detail { animation:dshpm-expand .26s cubic-bezier(.22,1,.36,1) backwards; }
 .dshpm-empty { animation:dshpm-rise .3s cubic-bezier(.22,1,.36,1) backwards; }
@@ -1239,6 +1255,99 @@ window.__ModuleLoader__.load({
       });
       updateCountState.inflight = request;
       return request;
+    }
+
+    // ───────────────────────── 自动检查规则（用户定的） ─────────────────────────
+    // 1) 每次启动 DSH：client 模块随宿主 apply 一次 → 立刻检查一次**市场本体**更新；
+    // 2) 启动后每 1 小时 → 检查一次**插件**更新（读 /installed，宿主已把目录 join 进来），
+    //    结果同时喂给侧边栏角标与「可更新」页签。
+    // 状态放模块级：页面打开时直接是「已检查过」的样子，不必再点一次「检查市场更新」。
+    var PLUGIN_CHECK_INTERVAL_MS = 60 * 60 * 1000;
+    var selfCheckState = { phase: "idle", data: null, error: null, at: 0 };
+    var selfCheckListeners = [];
+    var installedListeners = [];
+    var schedulerStarted = false;
+
+    function notifyListeners(list, payload) {
+      var copy = list.slice();
+      for (var i = 0; i < copy.length; i++) {
+        try { copy[i](payload); } catch (listenerError) {
+          // 命名单个订阅者失败：一个组件的问题不能让其余订阅者收不到这次检查结果。
+        }
+      }
+    }
+
+    function subscribeSelfCheck(listener) {
+      selfCheckListeners.push(listener);
+      return function () {
+        var at = selfCheckListeners.indexOf(listener);
+        if (at >= 0) selfCheckListeners.splice(at, 1);
+      };
+    }
+
+    function subscribeInstalledRefresh(listener) {
+      installedListeners.push(listener);
+      return function () {
+        var at = installedListeners.indexOf(listener);
+        if (at >= 0) installedListeners.splice(at, 1);
+      };
+    }
+
+    function getSelfCheck() { return selfCheckState; }
+
+    function setSelfCheck(next) {
+      selfCheckState = next;
+      notifyListeners(selfCheckListeners, next);
+    }
+
+    /** 检查市场本体更新：启动规则与页面按钮共用同一个状态机（所以按钮直接显示检查结果）。
+     *  onResult 可选——页面用它把结果翻译成回执气泡；启动时的那次检查没有回执。
+     *  fetch/URL 不可用的环境（回归测试会调用 apply）不能让 apply 崩掉，所以这里兜住同步异常。 */
+    function runSelfCheck(onResult) {
+      if (selfCheckState.phase === "checking") return;
+      setSelfCheck({ phase: "checking", data: selfCheckState.data, error: null, at: selfCheckState.at });
+      var request = null;
+      try {
+        request = api.selfUpdate(false);
+      } catch (error) {
+        setSelfCheck({ phase: "error", data: null, error: error, at: Date.now() });
+        if (typeof onResult === "function") onResult(error, null);
+        return;
+      }
+      request.then(function (payload) {
+        var info = payload && payload.selfUpdate ? payload.selfUpdate : {};
+        setSelfCheck({ phase: "ready", data: info, error: null, at: Date.now() });
+        if (typeof onResult === "function") onResult(null, info);
+      }, function (error) {
+        setSelfCheck({ phase: "error", data: null, error: error, at: Date.now() });
+        if (typeof onResult === "function") onResult(error, null);
+      });
+    }
+
+    /** 每小时的插件更新检查：绕过 5 分钟计数 TTL，再通知页面重读并给出回执。 */
+    function checkPluginUpdates() {
+      var before = updateCountState.count;
+      return ensureUpdateCount(true).then(function (snapshot) {
+        var increased = snapshot.known === true && snapshot.count > before;
+        notifyListeners(installedListeners, { count: snapshot.count, increased: increased });
+        return { count: snapshot.count, increased: increased };
+      });
+    }
+
+    /** 守卫：apply 可能被调用多次（HMR / 重新注册），定时器只准有一个。 */
+    function startUpdateScheduler() {
+      if (schedulerStarted) return;
+      schedulerStarted = true;
+      runSelfCheck();
+      if (typeof setInterval === "function") {
+        var handle = setInterval(function () {
+          // 回调里不许把异常抛到定时器外（测试环境没有可用的网络栈时会炸掉整个进程）。
+          try { checkPluginUpdates(); } catch (checkError) { /* 下一小时再试 */ }
+        }, PLUGIN_CHECK_INTERVAL_MS);
+        // Node（回归测试里会调用 apply）返回带 unref 的 Timeout：不 unref 的话测试进程会被这个
+        // 每小时一次的定时器拖住、永远不退出。浏览器返回的是数字，没有 unref，跳过即可。
+        if (handle && typeof handle.unref === "function") handle.unref();
+      }
     }
 
     // ───────────────────────────── 运行期接线（apply 填，组件读） ─────────────────────────────
@@ -1443,6 +1552,8 @@ window.__ModuleLoader__.load({
       return el("div", {
         className: "dshpm-notice",
         "data-kind": kind,
+        // data-open 只在**退场**那 200ms 里是 false：气泡先沉下去再卸载，不是凭空消失。
+        "data-open": props.open === false ? "false" : "true",
         role: kind === "error" ? "alert" : "status",
         "aria-live": kind === "error" ? "assertive" : "polite"
       },
@@ -1915,18 +2026,24 @@ window.__ModuleLoader__.load({
     ];
 
     // ───────────────────── 可更新插件页（第三个页签：发现 / 已安装 / 可更新） ─────────────────────
-    // 由「头部按钮就地展开的抽屉」搬成页签——就是用户圈的那个位置（已安装右边再开一个）。
-    // 内容一字未改：列出哪些装了新版本，**每一条都要用户自己点**。一次只改动一个依赖，
-    // 失败不影响其余，比「一键全更新」保守，也更好排查。
+    // 由「头部按钮就地展开的抽屉」搬成页签——用户圈的那个位置（已安装右边再开一个）。
+    // 页头右侧是用户指定的两个按钮：**一键更新**（顺序逐个跑）与**检查市场更新**（原头部按钮搬来），
+    // 两者的反馈沿用原头部那套：忙碌态（spinner + aria-busy + 禁用）+ 回执气泡。
+    // 逐个点仍然保留：一次只改一个依赖、失败不连坐，想稳就一条条来。
     function UpdatesPane(props) {
       var state = props.state || {};
       var bundles = props.bundles || [];
       var results = props.results || {};
       var updateBundle = props.onUpdate;
+      var batch = props.batch || null;
+      var batchRunning = !!(batch && batch.running);
+      var self = props.self || {};
       var hasCatalog = props.catalogUpdated !== null && props.catalogUpdated !== undefined;
-      var subtitle = (props.count || 0) > 0
-        ? t("updates.subtitle", { installed: props.installedCount || 0, count: props.count || 0 })
-        : t("updates.subtitleEmpty", { installed: props.installedCount || 0 });
+      var subtitle = batchRunning
+        ? t("updates.batchProgress", { done: batch.done, total: batch.total })
+        : (props.count || 0) > 0
+          ? t("updates.subtitle", { installed: props.installedCount || 0, count: props.count || 0 })
+          : t("updates.subtitleEmpty", { installed: props.installedCount || 0 });
 
       function body() {
         if (state.phase === "loading" && !state.data) {
@@ -1988,7 +2105,7 @@ window.__ModuleLoader__.load({
               el("button", {
                 type: "button",
                 className: "dshpm-btn dshpm-btn--primary",
-                disabled: busy || props.readOnly,
+                disabled: busy || props.readOnly === true || batchRunning,
                 "aria-busy": busy ? "true" : "false",
                 title: props.readOnly ? t("readonly.body") : t("action.update", { version: bundle.latest }),
                 onClick: function () { updateBundle(bundle); }
@@ -2006,7 +2123,33 @@ window.__ModuleLoader__.load({
           el("span", { className: "dshpm-drawerIcon" }, el(IconLayers, { size: 15 })),
           el("div", { className: "dshpm-drawerHeading" },
             el("div", { className: "dshpm-drawerTitle" }, t("updates.title")),
-            el("div", { className: "dshpm-drawerSubtitle" }, subtitle))),
+            el("div", { className: "dshpm-drawerSubtitle" }, subtitle)),
+          // 两个按钮：左管下面这一列（一键更新），右管市场本体（检查市场更新）。
+          // 忙碌态与回执气泡就是从被删掉的那两个头部按钮上搬过来的。
+          el("div", { className: "dshpm-updatesActions" },
+            el("button", {
+              type: "button",
+              className: "dshpm-btn dshpm-btn--primary",
+              disabled: batchRunning || bundles.length === 0 || props.readOnly === true,
+              "aria-busy": batchRunning ? "true" : "false",
+              title: bundles.length ? t("action.updateAllCount", { count: bundles.length }) : t("notice.updateAllNone"),
+              onClick: props.onUpdateAll
+            }, batchRunning ? el(IconSpinner, { size: 13 }) : el(IconUpgrade, { size: 13 }),
+              batchRunning ? t("action.updatingAll")
+                : bundles.length ? t("action.updateAllCount", { count: bundles.length })
+                  : t("action.updateAll")),
+            el("button", {
+              type: "button",
+              className: "dshpm-btn" + (self.available ? " dshpm-btn--primary dshpm-btn--pulse" : ""),
+              disabled: self.busy === true,
+              "aria-busy": self.busy ? "true" : "false",
+              "data-state": self.available ? "available" : self.phase,
+              title: self.title || t("action.checkSelf"),
+              onClick: self.available ? self.onApply : self.onCheck
+            }, self.busy ? el(IconSpinner, { size: 12 })
+              : self.available ? el(IconUpgrade, { size: 13 })
+                : self.phase === "ready" ? el(IconCheck, { size: 13 }) : el(IconUpgrade, { size: 13 }),
+              self.label || t("action.checkSelf")))),
         el("div", { className: "dshpm-drawerHint" }, t("updates.hint")),
         el("div", { className: "dshpm-drawerBody" }, body()),
         el("div", { className: "dshpm-drawerFoot" },
@@ -2076,6 +2219,36 @@ window.__ModuleLoader__.load({
       var noticeState = React.useState(null);
       var notice = noticeState[0];
       var setNotice = noticeState[1];
+      // 退场动画：收到关闭信号先让气泡「沉下去」（data-open="false"），200ms 后才真正卸载。
+      // 直接 setNotice(null) 的话，气泡是凭空消失的——这是这轮「弹出显示效果」的一部分。
+      var noticeClosingState = React.useState(false);
+      var noticeClosing = noticeClosingState[0];
+      var setNoticeClosing = noticeClosingState[1];
+      var noticeTimerRef = React.useRef(null);
+
+      function dismissNotice() {
+        if (noticeClosing) return;
+        setNoticeClosing(true);
+        if (noticeTimerRef.current) clearTimeout(noticeTimerRef.current);
+        noticeTimerRef.current = setTimeout(function () {
+          noticeTimerRef.current = null;
+          if (!mountedRef.current) return;
+          setNotice(null);
+          setNoticeClosing(false);
+        }, NOTICE_CLOSE_MS);
+      }
+
+      // 退场途中来了新回执：立刻回到「开着」的状态显示它，不能顶着 opacity:0 装消失。
+      React.useEffect(function () {
+        if (notice) setNoticeClosing(false);
+      }, [notice]);
+
+      // 新回执顶掉上一条的退场计时，避免旧计时器把新回执提前卸载。
+      React.useEffect(function () {
+        return function () {
+          if (noticeTimerRef.current) clearTimeout(noticeTimerRef.current);
+        };
+      }, []);
 
       var expandedState = React.useState({});
       var expanded = expandedState[0];
@@ -2090,14 +2263,24 @@ window.__ModuleLoader__.load({
       var setCopied = copiedState[1];
 
       // 市场自身更新的状态机：idle → checking → ready（可能 updateAvailable）→ installing → ready
-      var selfState = React.useState({ phase: "idle", data: null, error: null });
+      // 状态在**模块级**（启动时的自动检查已经写过一次），这里只是订阅它——页面一打开
+      // 按钮就是「已是最新 / 更新到 x.y.z」，不用先点一次。
+      var selfState = React.useState(getSelfCheck);
       var selfUpdate = selfState[0];
       var setSelfUpdate = selfState[1];
+      React.useEffect(function () {
+        return subscribeSelfCheck(function (next) { setSelfUpdate(next); });
+      }, []);
 
       // 可更新页里每一条的更新结果，按包名记：进度与成功/失败都留在原地，不用去翻提示条。
       var updateResultsState = React.useState({});
       var updateResults = updateResultsState[0];
       var setUpdateResults = updateResultsState[1];
+
+      // 一键更新的进度：null = 没在跑；{ running, total, done, ok, fail } = 进行中。
+      var batchState = React.useState(null);
+      var batch = batchState[0];
+      var setBatch = batchState[1];
 
       /** 「发现 N 个可更新」每次挂载只提示一次，别在每次重读列表时重复弹。 */
       var announcedRef = React.useRef(false);
@@ -2257,7 +2440,7 @@ window.__ModuleLoader__.load({
         if (!notice || (notice.kind !== "success" && notice.kind !== "info")) return undefined;
         var timer = setTimeout(function () {
           if (!mountedRef.current) return;
-          setNotice(function (current) { return current === notice ? null : current; });
+          dismissNotice();
         }, NOTICE_DISMISS_MS);
         return function () { clearTimeout(timer); };
       }, [notice]);
@@ -2270,6 +2453,16 @@ window.__ModuleLoader__.load({
           abortKey("installed");
         };
       }, [tick]);
+
+      // 每小时的自动检查（见 startUpdateScheduler）会通知这里重读已安装列表；
+      // 只有「多出新更新」时才给回执，否则每小时弹一条提示会很吵。角标不依赖这里，
+      // 它读的是模块级计数，后台那次检查会直接更新它。
+      React.useEffect(function () {
+        return subscribeInstalledRefresh(function (info) {
+          if (!mountedRef.current) return;
+          loadInstalled({ announce: !!(info && info.increased && info.count > 0) });
+        });
+      }, []);
 
       function bumpTick() {
         setTick(function (n) { return n + 1; });
@@ -2313,7 +2506,9 @@ window.__ModuleLoader__.load({
         setPage(1);
       }
 
-      function submitInstall(target, approvedBuilds, onDone) {
+      // silent：一键更新时用——逐条的结果记进该条（updateResults），不再每条都顶一条回执，
+      // 否则批量跑到第三条时，前两条的回执已经把「开始更新」那条盖掉了。
+      function submitInstall(target, approvedBuilds, onDone, silent) {
         var requestName = target.name;
         var label = target.label || target.name;
         var key = target.key || requestName;
@@ -2335,24 +2530,24 @@ window.__ModuleLoader__.load({
               var stillText = t("notice.buildsStillPending", { builds: payload.pendingBuilds.join(", ") });
               setPending(null);
               setNotice({ kind: "warn", text: stillText });
-              report({ ok: false, text: stillText });
+              report({ ok: false, text: stillText, pending: true });
             } else {
               var pendingText = t("notice.buildsPending", { name: label });
               setPending({ name: requestName, label: label, spec: target.spec, kind: target.kind || "install", key: key, builds: payload.pendingBuilds });
               setNotice({ kind: "warn", text: pendingText });
-              report({ ok: false, text: pendingText });
+              report({ ok: false, text: pendingText, pending: true });
             }
             return;
           }
           setPending(null);
           var outcome = noticeFromResult(payload, "install", label);
-          setNotice(outcome);
+          if (!silent) setNotice(outcome);
           report({ ok: outcome.kind === "success", text: outcome.text });
           bumpTick();
         }).catch(function (error) {
           if (!mountedRef.current) return;
           clearJob();
-          setNotice({ kind: "error", error: error });
+          if (!silent) setNotice({ kind: "error", error: error });
           report({ ok: false, text: error && error.message ? String(error.message) : t("updates.failed", { name: label }) });
         });
       }
@@ -2367,8 +2562,9 @@ window.__ModuleLoader__.load({
         }, null);
       }
 
-      /** 抽屉里点「更新到 x.y.z」：走同一条安装接口，把结果记回该条。 */
-      function updateBundle(bundle) {
+      /** 「可更新」页里点「更新到 x.y.z」：走同一条安装接口，把结果记回该条。
+       *  silent 用于一键更新（回执只发汇总那一条）；onDone 用于顺序执行的下一步。 */
+      function updateBundle(bundle, silent, onDone) {
         submitInstall({ name: bundle.name, label: bundle.name, spec: bundle.name, kind: "update", key: bundle.name }, null, function (outcome) {
           setUpdateResults(function (previous) {
             var next = {};
@@ -2377,7 +2573,47 @@ window.__ModuleLoader__.load({
             next[bundle.name] = outcome;
             return next;
           });
-        });
+          if (typeof onDone === "function") onDone(outcome);
+        }, silent === true);
+      }
+
+      /**
+       * 一键更新：**按顺序逐个执行**（仍然一次只改一个依赖），跑完给一条汇总回执。
+       * 与「逐个点」共用同一条安装接口与同一份结果记录，所以中途失败也只影响那一条。
+       * 卡在「要先批准构建脚本」上就暂停：决定权交回给用户，批准后再点一次即可。
+       */
+      function updateAll() {
+        var targets = updateBundles.slice();
+        if (batch && batch.running) return;
+        if (!targets.length) {
+          setNotice({ kind: "info", text: t("notice.updateAllNone") });
+          return;
+        }
+        var done = 0, ok = 0, fail = 0;
+        setBatch({ running: true, total: targets.length, done: 0, ok: 0, fail: 0 });
+        setNotice({ kind: "info", text: t("notice.updateAllStart", { count: targets.length }) });
+
+        function finish(stoppedText) {
+          if (!mountedRef.current) return;
+          setBatch(null);
+          if (stoppedText) setNotice({ kind: "warn", text: stoppedText });
+          else setNotice({ kind: fail > 0 ? "warn" : "success", text: t("notice.updateAllDone", { ok: ok, fail: fail }) });
+          bumpTick();
+        }
+        function step() {
+          if (!mountedRef.current) return;
+          if (done >= targets.length) { finish(null); return; }
+          var bundle = targets[done];
+          updateBundle(bundle, true, function (outcome) {
+            if (!mountedRef.current) return;
+            done++;
+            if (outcome && outcome.ok) ok++; else fail++;
+            setBatch({ running: true, total: targets.length, done: done, ok: ok, fail: fail });
+            if (outcome && outcome.pending) { finish(outcome.text); return; }
+            step();
+          });
+        }
+        step();
       }
 
       function approvePending() {
@@ -2460,26 +2696,26 @@ window.__ModuleLoader__.load({
       }
 
       /**
-       * 「检查市场更新」：只打一次 /self-update（宿主侧有 10 分钟缓存，连点不会打爆 CDN），
-       * 结果同时进按钮文案与提示条。
+       * 「检查市场更新」（已搬进「可更新」页）：走模块级状态机——启动时那次自动检查写的就是
+       * 它，所以页面一打开按钮已经是结果；再点一次才打 /self-update（宿主侧有 10 分钟缓存，
+       * 连点不会打爆 CDN），结果进回执气泡。
        */
       function checkSelfUpdate() {
         if (selfUpdate.phase === "checking" || selfUpdate.phase === "installing") return;
-        setSelfUpdate({ phase: "checking", data: selfUpdate.data, error: null });
-        api.selfUpdate(false).then(function (payload) {
+        runSelfCheck(function (error, info) {
           if (!mountedRef.current) return;
-          var info = payload && payload.selfUpdate ? payload.selfUpdate : {};
-          setSelfUpdate({ phase: "ready", data: info, error: null });
+          if (error) {
+            // 宿主半还是旧版本时这个端点根本不存在（404/405）。这句话比「请求没有完成」有用得多：
+            // 客户端半是热更新的，所以「按钮出现了但宿主没这接口」是升级过程中的正常中间态。
+            var staleHost = error.code === "not-found" || error.code === "method-not-allowed";
+            setNotice(staleHost ? { kind: "warn", text: t("notice.selfNeedsRestart") } : { kind: "error", error: error });
+            return;
+          }
           setNotice(info.updateAvailable
             ? { kind: "info", text: t("notice.selfFound", { version: info.latest }) }
-            : { kind: "success", text: t("notice.selfCurrent", { version: info.latest }) });
-        }).catch(function (error) {
-          if (!mountedRef.current) return;
-          setSelfUpdate({ phase: "error", data: null, error: error });
-          // 宿主半还是旧版本时这个端点根本不存在（404/405）。这句话比「请求没有完成」有用得多：
-          // 客户端半是热更新的，所以「按钮出现了但宿主没这接口」是升级过程中的正常中间态。
-          var staleHost = error && (error.code === "not-found" || error.code === "method-not-allowed");
-          setNotice(staleHost ? { kind: "warn", text: t("notice.selfNeedsRestart") } : { kind: "error", error: error });
+            // 没有新版本时说**本机**版本：远端 latest 可能低于本机（本机是 link 开发装），
+            // 报远端版本会出现「标题写着 1.1.4、提示却说已是最新 v1.1.3」这种自相矛盾。
+            : { kind: "success", text: t("notice.selfCurrent", { version: version || info.latest }) });
         });
       }
 
@@ -2488,27 +2724,26 @@ window.__ModuleLoader__.load({
         if (selfUpdate.phase === "installing") return;
         var target = selfUpdate.data && selfUpdate.data.latest ? selfUpdate.data.latest : "";
         startJob({ key: "self-update", kind: "self-update" });
-        setSelfUpdate({ phase: "installing", data: selfUpdate.data, error: null });
+        setSelfCheck({ phase: "installing", data: selfUpdate.data, error: null });
         api.applySelfUpdate().then(function (payload) {
           if (!mountedRef.current) return;
           clearJob();
           var to = payload && payload.to ? payload.to : null;
           // 装完本地版本已经变了：按钮回到「检查更新」，重启前不谎称已生效。
-          setSelfUpdate({ phase: "ready", data: null, error: null });
+          setSelfCheck({ phase: "ready", data: null, error: null });
           setNotice({ kind: "success", text: to ? t("notice.selfUpdated", { version: to }) : t("notice.selfCurrent", { version: target }) });
         }).catch(function (error) {
           if (!mountedRef.current) return;
           clearJob();
-          setSelfUpdate({ phase: "error", data: null, error: error });
+          setSelfCheck({ phase: "error", data: null, error: error });
           setNotice({ kind: "error", error: error });
         });
       }
 
       /**
-       * 点「更新插件」= 切到「可更新」页签并重读一次已安装列表：角标与列表都基于新数据。
-       * announce：这次是用户点出来的，**无论有没有更新都要回一句话**——「检查市场更新」
-       * 一直是这么做的，同一个头部的两个按钮不该一个有反馈、一个静默。
-       * （页签本身就是反馈：内容整页出现，不用再把面板滚进可视区。）
+       * 打开「可更新」页签：页签本身就是反馈（内容整页出现），同时重读一次已安装列表，
+       * **无论有没有更新都回一句话**——「检查市场更新」一直是这么做的，不能一个有反馈一个静默。
+       * 头部的「更新插件」按钮已删除（页签与侧边栏角标取代了它），这是它原来的入口。
        */
       function goUpdates() {
         setTab("updates");
@@ -2574,9 +2809,6 @@ window.__ModuleLoader__.load({
         : null;
       var refreshing = !!job && job.kind === "refresh";
       var busyKey = job ? job.key : null;
-      // 「检查中」只在「可更新」页签上的重读在途时亮：与「检查市场更新」的 checking 态同款反馈。
-      // 页签没切过去时不亮——那次是后台刷新，不该让头部按钮跟着闪。
-      var updatesBusy = tab === "updates" && installed.phase === "loading";
 
       // ── 头部两个按钮与抽屉要用的派生值 ──
       var installedPayload = installed.data || {};
@@ -2620,28 +2852,8 @@ window.__ModuleLoader__.load({
               ? el("div", { className: "dshpm-selfNote" }, el(IconInfo, { size: 12 }), el("span", null, t("self.linkNote")))
               : null),
           el("div", { className: "dshpm-headerActions" },
-            el("button", {
-              type: "button",
-              className: "dshpm-btn dshpm-btn--updates" + (updateCount > 0 ? " dshpm-btn--attention" : ""),
-              "aria-busy": updatesBusy ? "true" : "false",
-              disabled: updatesBusy,
-              title: t("updates.title"),
-              onClick: goUpdates
-            }, updatesBusy ? el(IconSpinner, { size: 13 }) : el(IconDownload, { size: 13 }),
-              el("span", null, updatesBusy ? t("action.checkingUpdates") : t("action.updates")),
-              updateCount > 0 ? el("span", { className: "dshpm-count", "data-pop": "true" }, String(updateCount)) : null),
-            el("button", {
-              type: "button",
-              className: "dshpm-btn" + (selfAvailable ? " dshpm-btn--primary dshpm-btn--pulse" : ""),
-              disabled: selfBusy,
-              "aria-busy": selfBusy ? "true" : "false",
-              "data-state": selfAvailable ? "available" : selfPhase,
-              title: selfTitle,
-              onClick: selfAvailable ? applySelfUpdate : checkSelfUpdate
-            }, selfBusy ? el(IconSpinner, { size: 12 })
-              : selfAvailable ? el(IconUpgrade, { size: 13 })
-                : selfPhase === "ready" ? el(IconCheck, { size: 13 }) : el(IconUpgrade, { size: 13 }),
-              selfLabel),
+            // 头部只留「刷新目录」：「更新插件」被第三个页签取代、「检查市场更新」搬进了可更新页，
+            // 连同它们的反馈（忙碌态 + 回执气泡）一起搬过去——见 UpdatesPane 的 dshpm-updatesActions。
             el("button", {
               type: "button",
               className: "dshpm-btn",
@@ -2651,7 +2863,13 @@ window.__ModuleLoader__.load({
             }, refreshing ? el(IconSpinner, { size: 12 }) : el(IconRefresh, { size: 12 }),
               refreshing ? t("action.refreshing") : t("action.refresh")))
         ),
-        notice ? el(NoticeBar, { notice: withAutoDismiss(notice), onDismiss: function () { setNotice(null); } }) : null,
+        notice
+          ? el(NoticeBar, {
+            notice: withAutoDismiss(notice),
+            open: noticeClosing ? false : true,
+            onDismiss: dismissNotice
+          })
+          : null,
         pending
           ? el(Banner, {
             kind: "warn",
@@ -2697,7 +2915,7 @@ window.__ModuleLoader__.load({
             className: "dshpm-tab",
             "data-active": tab === "updates" ? "true" : "false",
             "aria-selected": tab === "updates" ? "true" : "false",
-            onClick: function () { setTab("updates"); }
+            onClick: goUpdates
           }, t("tab.updates"),
             updateCount > 0 ? el("span", { className: "dshpm-count" }, String(updateCount)) : null)),
         tab === "discover"
@@ -2749,7 +2967,19 @@ window.__ModuleLoader__.load({
               results: updateResults,
               busyKey: busyKey,
               readOnly: readOnly,
+              batch: batch,
+              // 头部搬来的自更新按钮：状态机在模块级，这里只给它读写入口。
+              self: {
+                phase: selfPhase,
+                label: selfLabel,
+                title: selfTitle,
+                busy: selfBusy,
+                available: selfAvailable,
+                onCheck: checkSelfUpdate,
+                onApply: applySelfUpdate
+              },
               onUpdate: updateBundle,
+              onUpdateAll: updateAll,
               onReload: function () { loadInstalled({ announce: true }); },
               onRefreshCatalog: refreshCatalog
             })
@@ -2805,6 +3035,9 @@ window.__ModuleLoader__.load({
     exports.apply = function (ctx) {
       ensureStyles();
       watchStyles(ctx);
+      // 自动检查规则在这里启动（模块级守卫保证只跑一次）：
+      // 启动时查一次市场本体更新，之后每小时查一次插件更新。
+      startUpdateScheduler();
 
       var layout = readService(ctx, "layout");
       RUNTIME.selectPanel = layout && typeof layout.selectPanel === "function"

@@ -298,14 +298,29 @@ window.__ModuleLoader__.load({
   - 点击调用 `layout.selectPanel('plugin-market')`；`layout` 不可用时按钮禁用并给出 tooltip。
   - 用 `props.usePanelInfo(info => info.activePanelId === 'plugin-market')` 做选中态；该 hook 不存在时按未选中渲染。
 - `MarketPage` 只读 `plugin-market` 路由，不直接访问宿主服务：
-  - 顶部：标题「插件市场」+ 版本号 + **三个按钮（源码顺序即渲染顺序）**：「更新插件」（带可更新数量角标）→「检查市场更新」（状态机：检查中 / 已是最新 / 更新到 x.y.z / 更新中）→「刷新目录」。前两个是 v1.1.0 新增的，插在原有「刷新目录」左边；三者都在标题右侧的 `.dshpm-headerActions` 里，窄宽度下整组换行。
-  - 「更新插件」按钮 = **切到第三个页签「可更新」**（v1.1.4 起；此前是就地展开的抽屉）：页里逐条列出 `version → latest` 与各自一个「更新到 x.y.z」按钮；**没有**一键全更新。列表数据来自 `/installed` 的 `updateAvailable`/`latest`（宿主已把目录 join 进去），因此不依赖发现页的目录请求是否完成；切过去时会重读一次并给一条结果回执。
+  - 顶部：标题「插件市场」+ 版本号 + **一个按钮**：「刷新目录」（标题右侧的 `.dshpm-headerActions`）。
+    原先的「更新插件」与「检查市场更新」按用户要求删掉了：前者由第三个页签取代，后者搬进「可更新」页页头，
+    连同两者的反馈（忙碌态 spinner + `aria-busy` + 回执气泡）一起搬过去。
+  - 「可更新」页页头右侧的**两个按钮**：「一键更新（N）」与「检查市场更新」（状态机：检查中 / 已是最新 /
+    更新到 x.y.z / 更新中）。「一键更新」按顺序逐个执行同一条安装接口、每条结果留在该行、跑完给一条汇总回执，
+    卡在「要先批准构建脚本」上就暂停（决定权交回用户）；逐条的「更新到 x.y.z」仍然保留。
+  - 「可更新」页的数据来自 `/installed` 的 `updateAvailable`/`latest`（宿主已把目录 join 进去），
+    因此不依赖发现页的目录请求是否完成；点页签会重读一次并给一条结果回执。
+  - **自动检查规则**（v1.1.4，用户定的）：
+    1. 每次启动 DSH（client 模块 `apply` 执行时）→ 立刻检查一次**市场本体**更新（`GET /self-update`，
+       宿主侧 10 分钟缓存），结果写进模块级状态机——可更新页的按钮一打开就是检查结果，不必先点一次；
+    2. 启动后**每 1 小时** → 检查一次**插件**更新（`GET /installed`，绕过 5 分钟计数 TTL），刷新侧边栏与
+       页签角标；「多出新更新」且市场页开着时补一条回执（否则不打扰）。
+    调度带 `schedulerStarted` 守卫（`apply` 可能被 HMR 调多次），定时器 `unref()`——否则 Node 下回归测试
+    进程会被这个每小时的定时器拖住、永远不退出。
   - 侧边栏入口在 `updateAvailable` 计数 > 0 时渲染角标；计数由 `/installed` 结果驱动（模块级 5 分钟 TTL + 在途请求复用），入口与面板共享同一份。
   - 有更新时的提示：**悬浮回执气泡（Android toast 那种）**——`.dshpm-notice` 用 `position:fixed`
     贴视口底部居中（`left:0; right:0; margin:0 auto` 水平居中，`max-width:min(560px, 100vw-32px)`），
     **不占文档流**，出现或消失都不推动布局、也不必滚动才看得见。成功/信息类 4.6s 自动收起并带倒计时线；
-    警告/错误保留到手动关闭。同一根节点下仍有一条顶部不确定性进度条（任何写操作进行中）。
-  - 页签：`发现`（目录）/ `已安装` / `可更新`（带可更新计数角标，排在已安装右边；点击头部「更新插件」也会切到这里）。
+    **收起有退场动画**：先翻 `data-open="false"` 沉下去（200ms，`NOTICE_CLOSE_MS`）再卸载，不是凭空消失；
+    毛玻璃（`backdrop-filter`）+ 分层投影。警告/错误保留到手动关闭。
+    同一根节点下仍有一条顶部不确定性进度条（任何写操作进行中）。
+  - 页签：`发现`（目录）/ `已安装` / `可更新`（带可更新计数角标，排在已安装右边；点它会切过去并带回执地重读）。
   - 发现页：搜索框（回车或 300ms 防抖）、分类 chips、排序下拉、卡片网格、分页（上一页/下一页 + 第 x/y 页）。
   - 卡片：名称 + 作者 + 描述（按界面语言）+ star/下载 + 版本 + 分类 + 「安装」/「已安装」/「更新」按钮 + 「详情」。
   - 详情：可展开区域，显示完整描述、能力标签、仓库/目录页外链（`target="_blank" rel="noreferrer"`）。
@@ -349,5 +364,5 @@ window.__ModuleLoader__.load({
    - 端到端（`verify/self-update-live.ps1`）：临时把当前版本降到低于最新标签 → 真的下载 → 校验 →
      `pnpm add` 装进 scratch profile（依赖变为 `file:` 指向下载物）→ 结束时按字节还原本地 `package.json`。
 10. **同一路径的 GET 与 POST 必须只有一个路由登记项**：路由表以 path 为键，登记两次会互相覆盖，`GET /self-update` 会变成 405。改这里要重跑 §5 第 9 条的 GET 断言。
-11. **真实浏览器渲染**（`verify/ui-check.ps1` → `verify/market-ui.e2e.mjs`）：侧边栏入口可点开面板；头部三个按钮文案与顺序正确；有 2 个可更新插件时角标显示 `2`；点「更新插件」展开列表且每行都有自己的「更新到 x.y.z」、没有批量按钮；卡片/列表行的 `animation-name` 含 `dshpm-rise` 且 `animation-fill-mode` 是 `backwards`；切到 `prefers-reduced-motion: reduce` 后 `animation-name` 变 `none` 而列表行仍然可见（行数不变）。
+11. **真实浏览器渲染**（`verify/ui-check.ps1` → `verify/market-ui.e2e.mjs`）：侧边栏入口可点开面板；头部只剩「刷新目录」一个按钮；页签栏是 `发现 / 已安装 / 可更新`，有 2 个可更新插件时页签角标显示 `2`；切到「可更新」页能看到两条记录、页头右侧有「一键更新（2）」与「检查市场更新」（带 `data-state`，启动时的自动检查会把它推到 `checking`/`ready`），每行仍有自己的「更新到 x.y.z」，点批量按钮给出「成功 2 个」的汇总回执；卡片/列表行的 `animation-name` 含 `dshpm-rise` 且 `animation-fill-mode` 是 `backwards`；切到 `prefers-reduced-motion: reduce` 后 `animation-name` 变 `none` 而列表行仍然可见（行数不变）。
 12. **文案与动效不变量**（`verify/client-copy.test.mjs`）：zh/en 键集完全一致；代码里用到的每个 `t("字面量键")` 都在两种语言里存在；没有僵尸文案键；被引用的 `@keyframes` 都有定义；没有任何升入动画用 `forwards`/`both`。

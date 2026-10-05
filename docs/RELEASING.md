@@ -100,7 +100,7 @@ $env:HTTPS_PROXY='http://127.0.0.1:7890'; $env:HTTP_PROXY='http://127.0.0.1:7890
 dsh plugin --profile web add https://github.com/Winnie-0721/dsh-plugin-market/releases/download/v1.1.1/deepseek-harness-market-1.1.1.tgz
 ```
 
-装好第一次之后就不必再记这条命令：市场头部的「检查市场更新」会走 §4.4 的 CDN 通道自己完成升级。
+装好第一次之后就不必再记这条命令：「可更新」页页头的「检查市场更新」会走 §4.4 的 CDN 通道自己完成升级。
 
 `dsh plugin add` 的 spec 解析接受 `.tgz` URL（`parseInstallSpec` 的 tarball 形状），
 上面这条命令在全新 profile 上实测：**10.6 秒装完、bundle 已激活、`node_modules` 里有包**。
@@ -133,7 +133,7 @@ pnpm publish --access public --no-git-checks
 - 版本号不可重用、不可覆盖——发错了只能往上加；
 - 发布后立刻真装一次：`dsh plugin --profile <新 profile> add <name>` 或直接 `add <tarball URL>`，启动宿主确认侧边栏底部入口还在。
 
-### 4.4 自更新通道（市场里那个「检查市场更新」按钮走的路）
+### 4.4 自更新通道（「可更新」页页头那个「检查市场更新」按钮走的路）
 
 三个源都会试，**按新鲜度排序**。全部数字是 2026-10-04 在本机实测（**不用代理**）：
 

@@ -3,8 +3,8 @@
  *
  * 假 DOM 桩能证明代码不抛异常，证明不了这几件事——所以这里全部在真引擎里测：
  *  1. 侧边栏入口能点开市场面板，页面真的渲染出样式（不是"有功能无样式"）；
- *  2. 蓝圈位置的两个按钮真的存在：检查市场更新 / 更新插件（带计数角标）；
- *  3. 点「更新插件」会展开可更新列表，且每一条都有自己的「更新到 x.y.z」按钮（逐个确认）；
+ *  2. 头部只剩「刷新目录」；第三个页签「可更新」带计数角标，页头右侧有「一键更新」与「检查市场更新」；
+ *  3. 切到「可更新」页能看到两条待更新记录、逐条「更新到 x.y.z」，点批量按钮会给出汇总回执；
  *  4. 动效真的生效（计算样式里有 animation-name / transition）；
  *  5. prefers-reduced-motion: reduce 下动效被关掉，而内容仍然可见（不能变成空白）。
  *
@@ -83,10 +83,19 @@ try {
   // 否则"动效生效"这一组断言测的是一条永远关着动画的路径，而 [6] 又会因为同样原因平凡通过。
   await client.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'no-preference' }] })
 
-  // 拦截 /installed：确定性数据，同时保证断言不依赖网络。
-  await client.send('Fetch.enable', { patterns: [{ urlPattern: '*plugin-market/installed*', requestStage: 'Request' }] })
+  // 拦截 /installed 与 /install：前者给确定性数据，后者让「一键更新」跑成功。
+  // fixture 插件在真实宿主里必然 400 not-in-catalog——那会造出两条控制台错误，
+  // 而这条路径要测的是**批量流程本身**（顺序执行 + 汇总回执），不是宿主的目录校验。
+  await client.send('Fetch.enable', {
+    patterns: [
+      { urlPattern: '*plugin-market/installed*', requestStage: 'Request' },
+      { urlPattern: '*plugin-market/install', requestStage: 'Request' },
+    ],
+  })
   client.on('Fetch.requestPaused', (params) => {
-    const body = Buffer.from(JSON.stringify(INJECTED_INSTALLED), 'utf8').toString('base64')
+    const isInstall = /\/plugin-market\/install$/.test(params.request.url)
+    const payload = isInstall ? { ok: true, application: 'applied' } : INJECTED_INSTALLED
+    const body = Buffer.from(JSON.stringify(payload), 'utf8').toString('base64')
     client
       .send('Fetch.fulfillRequest', {
         requestId: params.requestId,
@@ -139,18 +148,12 @@ try {
     `Array.from(document.querySelectorAll('.dshpm-headerActions button')).map(b => b.textContent.trim())`,
   )
   expect(
-    '蓝圈位置现在有三个按钮：更新插件 / 检查市场更新 / 刷新目录',
-    Array.isArray(headerButtons) && headerButtons.length === 3,
-    `实际：${JSON.stringify(headerButtons)}`,
-  )
-  expect(
-    '按钮顺序：更新插件 → 检查市场更新 → 刷新目录',
-    JSON.stringify(headerButtons) === JSON.stringify(['更新插件2', '检查市场更新', '刷新目录']) ||
-      (headerButtons?.[0]?.startsWith('更新插件') && headerButtons?.[1].includes('检查') && headerButtons?.[2].includes('刷新')),
+    '头部只剩一个按钮「刷新目录」（另两个按用户要求删掉：更新插件→页签、检查市场更新→可更新页）',
+    Array.isArray(headerButtons) && headerButtons.length === 1 && /刷新|Refresh/.test(headerButtons[0] || ''),
     `实际：${JSON.stringify(headerButtons)}`,
   )
   const badge = await evaluate(client, `(() => { const b = document.querySelector('.dshpm-count'); return b ? b.textContent.trim() : null; })()`)
-  expect('「更新插件」按钮上有可更新数量角标，且数字来自注入的列表', badge === '2', `实际：${badge}`)
+  expect('「可更新」页签上有可更新数量角标，且数字来自注入的列表', badge === '2', `实际：${badge}`)
 
   // 用户要求：把「可更新的插件」做成页签——已安装右边再开一个（他圈的就是那个位置）。
   const tabs = await evaluate(
@@ -254,21 +257,21 @@ try {
   const marketBadge = await evaluate(client, `!!document.querySelector('.dshpm-badge') && document.body.innerText.includes('市场自身') || document.body.innerText.includes('@fixture/needs-update')`)
   expect('已安装页显示注入的三个 bundle', marketBadge === true)
 
-  console.log('\n[4] 点「更新插件」切到「可更新」页签（逐个确认）')
-  // 用户报的「点更新插件没有任何反馈」：先把上一条提示条等没（自动收起 4.6s），
+  console.log('\n[4] 打开「可更新」页签（逐个确认 + 一键更新）')
+  // 用户报的「点更新插件没有任何反馈」：先把上一条提示条等没（自动收起 4.6s + 200ms 退场），
   // 这样点击后新出现的那条就必然是**本次**的回执，而不是上一次的残留。
   await waitFor(client, `document.querySelector('.dshpm-notice') === null`, 12000, '上一条提示条已自动收起')
-  await evaluate(client, `document.querySelector('.dshpm-btn--updates').click(); true`)
+  await evaluate(client, `Array.from(document.querySelectorAll('.dshpm-tab')).find(b => /可更新|Updates/.test(b.textContent)).click(); true`)
   await waitFor(client, `(() => { const t = document.querySelector('.dshpm-tab[data-active="true"]'); return !!t && /可更新|Updates/.test(t.textContent); })()`, 8000, '切到可更新页签')
   await waitFor(client, `document.querySelector('.dshpm-updatesPanel') !== null`, 8000, '可更新页渲染出来')
-  expect('点「更新插件」切到「可更新」页签（已安装右边第三个）', true)
+  expect('点「可更新」页签切过去（已安装右边第三个）', true)
   // 页签取代了抽屉：内容**整页**出现，不是叠在发现页卡片下面。
   const cardsAfter = await evaluate(client, `document.querySelectorAll('.dshpm-card').length`)
   expect('整页切换生效（发现页卡片已卸载，不是叠在下面）', Number(cardsAfter) === 0, `剩余卡片 ${cardsAfter}`)
   await waitFor(client, `document.querySelector('.dshpm-updatesPanel').getBoundingClientRect().height > 120`, 8000, '可更新页展开到最终高度')
-  // 反馈二：点完必须回一句话。fixture 注入了两个可更新插件，所以文案是确定的。
-  await waitFor(client, `(() => { const n = document.querySelector('.dshpm-notice'); if (!n) return false; return /发现 \\d+ 个插件有新版本|全部都是最新/.test(n.innerText.replace(/\\s+/g, ' ')); })()`, 8000, '点击后提示条给出回执')
-  expect('点「更新插件」后提示条给出结果回执（发现 2 个插件有新版本）', true)
+  // 打开页签要给回执（原「更新插件」按钮的反馈迁到了这里）。
+  await waitFor(client, `(() => { const n = document.querySelector('.dshpm-notice'); if (!n) return false; return /发现 \\d+ 个插件有新版本|全部都是最新/.test(n.innerText.replace(/\\s+/g, ' ')); })()`, 8000, '打开页签后提示条给出回执')
+  expect('打开「可更新」页签后提示条给出结果回执（发现 2 个插件有新版本）', true)
   const panelText = await evaluate(client, `document.querySelector('.dshpm-updatesPanel').innerText`)
   expect('列表里列出两个可更新插件与版本走向', /@fixture\/needs-update/.test(String(panelText)) && /1\.2\.0/.test(String(panelText)) && /@fixture\/second-update/.test(String(panelText)), String(panelText).slice(0, 200))
   const rows = await evaluate(client, `document.querySelectorAll('.dshpm-updatesPanel .dshpm-updateRow:not(.dshpm-updateRow--ghost)').length`)
@@ -278,15 +281,31 @@ try {
     `Array.from(document.querySelectorAll('.dshpm-updatesPanel .dshpm-updateRow .dshpm-btn--primary')).map(b => b.textContent.trim())`,
   )
   expect(
-    '每一条都有自己的「更新到 x.y.z」按钮（逐个确认，没有一键全更新）',
+    '每一条都有自己的「更新到 x.y.z」按钮（逐条确认仍然保留）',
     Array.isArray(perItemButtons) && perItemButtons.length === 2 && perItemButtons.every((label) => label.includes('更新到')),
     JSON.stringify(perItemButtons),
   )
+
+  // 页头右侧的两个新按钮（用户要求放这里，反馈逻辑也从被删的头部按钮迁过来）。
+  const paneButtons = await evaluate(client, `Array.from(document.querySelectorAll('.dshpm-updatesActions button')).map(b => b.textContent.trim())`)
   expect(
-    '列表里没有「全部更新」这类批量按钮',
-    !/全部更新|Update all/.test(String(panelText)),
-    '要求是逐个确认，不该出现批量入口',
+    '页头右侧有「一键更新（2）」与「检查市场更新（四态之一）」两个按钮',
+    Array.isArray(paneButtons) && paneButtons.length === 2 && /一键更新/.test(paneButtons[0] || '') && /检查市场更新|检查中|已是最新|更新到|Check|Checking|Up to date/.test(paneButtons[1] || ''),
+    JSON.stringify(paneButtons),
   )
+  expect(
+    '新增了批量入口「一键更新」，同时逐条确认没有被取消',
+    /一键更新/.test(String(panelText)) && Array.isArray(perItemButtons) && perItemButtons.length === 2,
+    `批量=${/一键更新/.test(String(panelText))} 逐条=${JSON.stringify(perItemButtons)}`,
+  )
+  const selfState = await evaluate(client, `(() => { const b = document.querySelectorAll('.dshpm-updatesActions button')[1]; return b ? { state: b.getAttribute('data-state'), busy: b.getAttribute('aria-busy') } : null; })()`)
+  expect('「检查市场更新」按钮带状态机标记（启动时的自动检查已写过一次）', !!selfState && ['idle', 'checking', 'ready', 'error'].includes(selfState?.state), JSON.stringify(selfState))
+
+  // 点「一键更新」：顺序逐个跑，跑完给一条汇总回执（宿主对 fixture 返回 not-in-catalog，所以必然是失败汇总）。
+  await evaluate(client, `(() => { const b = Array.from(document.querySelectorAll('.dshpm-updatesActions button')).find(x => /一键更新/.test(x.textContent)); if (b) b.click(); return true; })()`)
+  await waitFor(client, `(() => { const n = document.querySelector('.dshpm-notice'); if (!n) return false; const txt = n.innerText.replace(/\\s+/g, ' '); return /一键更新完成：成功 2 个|构建脚本/.test(txt); })()`, 20000, '一键更新给出汇总回执')
+  expect('点「一键更新」后提示条给出汇总回执（成功 2 个、失败 0 个）', true)
+
   const panelOpenHeight = await evaluate(client, `document.querySelector('.dshpm-updatesPanel').getBoundingClientRect().height`)
   expect('可更新页有实际高度（不是空壳）', Number(panelOpenHeight) > 120, `高度 ${panelOpenHeight}`)
 
@@ -298,14 +317,14 @@ try {
   writeFileSync(join(shotDir, 'market-header-zoom.png'), Buffer.from(zoom.data, 'base64'))
   console.log(`  · 截图：${join(shotDir, 'market-header-zoom.png')}`)
 
-  console.log('\n[4b] 用户原场景：发现页（长网格）+ 矮视口下点「更新插件」')
+  console.log('\n[4b] 用户原场景：发现页（长网格）+ 矮视口下切到「可更新」页签')
   // 上面那组是在「已安装」页点的，那里内容短——测不出「点了没反应」。这里复现真实场景：
   // 卡片网格把页面撑得很长、视口只有 520px。页签切过去之后内容从页签正下方开始，
   // 不用任何滚动就看得见（旧版抽屉开在几百像素之下，看上去就是「什么都没发生」）。
   await evaluate(client, `Array.from(document.querySelectorAll('.dshpm-tab')).find(b => /发现|Discover/.test(b.textContent)).click(); true`)
   await waitFor(client, `!!document.querySelector('.dshpm-card')`, 30000, '发现页卡片渲染出来（页面变长）')
   await client.send('Emulation.setDeviceMetricsOverride', { width: 1200, height: 520, deviceScaleFactor: 1, mobile: false })
-  await evaluate(client, `document.querySelector('.dshpm-btn--updates').click(); true`)
+  await evaluate(client, `Array.from(document.querySelectorAll('.dshpm-tab')).find(b => /可更新|Updates/.test(b.textContent)).click(); true`)
   await waitFor(client, `document.querySelector('.dshpm-updatesPanel') !== null`, 8000, '矮视口下可更新页渲染')
   await waitFor(client, `(() => { const p = document.querySelector('.dshpm-updatesPanel'); if (!p) return false; const r = p.getBoundingClientRect(); return r.top >= -1 && r.top < window.innerHeight && r.bottom > 0; })()`, 8000, '可更新页在视区内')
   expect('发现页 + 520px 视口：切过去后内容整页出现且在视区内（无需滚动）', true)
@@ -328,7 +347,7 @@ try {
   await client.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] })
   const reduceActive = await evaluate(client, `matchMedia('(prefers-reduced-motion: reduce)').matches`)
   expect('前置条件：偏好确实被切成 reduce', reduceActive === true, `实际 reduce=${reduceActive}`)
-  await evaluate(client, `document.querySelector('.dshpm-btn--updates').click(); true`)
+  await evaluate(client, `Array.from(document.querySelectorAll('.dshpm-tab')).find(b => /可更新|Updates/.test(b.textContent)).click(); true`)
   await waitFor(client, `document.querySelector('.dshpm-updatesPanel') !== null`, 8000, '可更新页渲染出来')
   await new Promise((resolve) => setTimeout(resolve, 400))
   const reduced = await evaluate(
@@ -383,5 +402,7 @@ console.log('')
 console.log(`真实浏览器验收：${results.length - failed.length}/${results.length} 通过`)
 if (failed.length > 0) {
   for (const result of failed) console.log(`  失败：${result.name}${result.detail ? ` — ${result.detail}` : ''}`)
-  process.exit(1)
+  // 用 exitCode 而不是 process.exit(1)：stdout 接的是管道（PowerShell 捕获），
+  // process.exit 会把还没刷出去的 console.log 全吞掉——失败时看起来「一行输出都没有」。
+  process.exitCode = 1
 }

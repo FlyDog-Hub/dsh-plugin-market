@@ -60,27 +60,34 @@ the market page in the main column.
 - **One-click install** with a clear source, live progress, and an explicit result; when the plugin
   needs build scripts, the exact package names are shown before you approve
 - **Installed management**: enable / disable through the profile patch layer (live when it can
-  hot-load), uninstall with a second confirmation, and a per-plugin update when a newer version exists
-- **Update hints, confirmed one at a time** (v1.1.0): the header's "Plugin updates" button carries a
-  count badge, and so does the sidebar entry; opening it lists every outdated plugin with its own
-  "Update to x.y.z". There is deliberately **no update-all**: each click changes one dependency, so a
-  failure cannot take the others down and you can see exactly which package moved
-- **Update the market itself** (v1.1.0): "Check for updates" turns into "Update to x.y.z" when a newer
-  release exists, downloads it, verifies it, and hands it to the Host — then asks for a **DSH restart**
-  (the Host half is cached in the running process, so the button never claims it already took effect)
+  hot-load), uninstall with a second confirmation
+- **Two ways to update** (v1.1.4): the tab bar is Discover / Installed / **Updates** (carrying the
+  count badge; the sidebar entry has one too). The Updates page lists every outdated plugin with its
+  own "Update to x.y.z", and its header adds **Update all** — it runs them one at a time over the
+  same install endpoint, so a failure never takes the others down, and it ends with a summary
+  receipt; if a plugin needs its build scripts approved, the batch pauses there. The per-row buttons
+  stay, so you can go slow if you prefer
+- **Update the market itself** (v1.1.0): "Check for updates" now lives in the Updates page header; it
+  turns into "Update to x.y.z" when a newer release exists, downloads it, verifies it, and hands it to
+  the Host — then asks for a **DSH restart** (the Host half is cached in the running process, so the
+  button never claims it already took effect)
+- **Automatic checks** (v1.1.4): one self-update check every time DSH starts, then one plugin-update
+  check every hour — the badges follow automatically, and a receipt only appears when something new
+  actually showed up
 - **An honest catalog status**: source, entry count, and refresh time; when a refresh fails it says
   plainly that the data is the previous cache instead of pretending it is current
 - **Errors that tell you what to do next**: what happened, why, and what to do now, plus a retry
 - **Themes and languages**: colors come from host theme tokens only; copy follows the host locale
   (Chinese / English)
 - **Restrained motion** (v1.1.0): staggered card entry, hover lift, button press rebound, a sliding tab
-  underline, notices that slide in with a countdown line, the update list expanding in place, and an
-  indeterminate progress bar during any write. With the system's "reduce motion" setting everything is
-  turned off and the content still renders complete — verified in a real browser, not just in code
+  underline, toasts that pop in with a countdown line and sink out on dismiss, the Updates page taking
+  over the pane, and an indeterminate progress bar during any write. With the system's "reduce motion"
+  setting everything is turned off and the content still renders complete — verified in a real browser,
+  not just in code
 
-![The two new header buttons and the expanded update list](assets/market-updates.png)
+![Historical: the two header buttons and the expanded update list (v1.1.4 moved them into the Updates page)](assets/market-updates.png)
 
-![Header toolbar: Plugin updates (with badge) / Check for updates / Refresh catalog](assets/market-header-actions.png)
+![Historical: header toolbar with three buttons (v1.1.4 keeps only Refresh catalog)](assets/market-header-actions.png)
 
 ## Configuration
 

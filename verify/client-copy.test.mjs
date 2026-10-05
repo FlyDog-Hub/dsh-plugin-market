@@ -76,9 +76,10 @@ check('词典里除动态前缀外的键都真的被用到（没有僵尸文案�
 check('新增的两组文案职责齐全（自更新 / 可更新列表 / 三个错误码）', () => {
   for (const key of [
     'action.checkSelf', 'action.checkingSelf', 'action.selfCurrent', 'action.updateSelf', 'action.updatingSelf',
-    'action.updates', 'action.checkingUpdates', 'action.recheckSelf',
-    'updates.title', 'updates.entryBadge', 'updates.hint', 'updates.empty.title', 'updates.empty.body',
+    'action.recheckSelf', 'action.updateAll', 'action.updateAllCount', 'action.updatingAll',
+    'updates.title', 'updates.entryBadge', 'updates.hint', 'updates.batchProgress', 'updates.empty.title', 'updates.empty.body',
     'notice.selfFound', 'notice.selfCurrent', 'notice.selfUpdated', 'notice.updatesFound', 'notice.updatesNone',
+    'notice.updateAllStart', 'notice.updateAllDone', 'notice.updateAllNone', 'tab.updates',
     'err.self-update-unavailable.title', 'err.self-update-integrity.title', 'err.self-update-download.title',
   ]) {
     assert.ok(zhKeys.has(key), `缺少文案键 ${key}`)
@@ -155,13 +156,16 @@ check('回执是悬浮气泡（Android toast）：fixed + 贴底居中 + 不占�
   assert.deepEqual(relative, [], '后面的规则不得写 position:relative 把 fixed 盖回文档流')
   assert.match(css, /@keyframes dshpm-toastin/, '气泡要有自己的入场动画 keyframes')
 })
-check('两个按钮在源码里都渲染了，且排在「刷新目录」之前（蓝圈位置）', () => {
-  const updatesBtn = source.indexOf('dshpm-btn--updates')
-  const selfBtn = source.indexOf('selfAvailable ? applySelfUpdate : checkSelfUpdate')
-  const refreshBtn = source.indexOf('refreshing ? el(IconSpinner, { size: 12 }) : el(IconRefresh, { size: 12 })')
-  assert.ok(updatesBtn > 0 && selfBtn > 0 && refreshBtn > 0, '三个按钮都应当存在')
-  assert.ok(updatesBtn < refreshBtn, '「更新插件」应排在刷新目录之前')
-  assert.ok(selfBtn < refreshBtn, '「检查市场更新」应排在刷新目录之前')
+check('头部只留「刷新目录」，两个更新类按钮搬进可更新页（用户要求删掉右上角那两个）', () => {
+  // 被删掉的是头部的「更新插件」与「检查市场更新」：前者被第三个页签取代，后者搬进可更新页。
+  assert.equal(source.includes('dshpm-btn--updates'), false, '头部的「更新插件」按钮应已删除')
+  assert.match(source, /refreshing \? t\("action\.refreshing"\) : t\("action\.refresh"\)/, '「刷新目录」必须还在头部')
+  assert.equal(source.includes('t("action.updates")'), false, 'action.updates 文案随按钮一起删除（否则就是僵尸文案）')
+  const actionsAt = source.indexOf('className: "dshpm-updatesActions"')
+  assert.ok(actionsAt > 0, '可更新页页头要有按钮区')
+  assert.ok(actionsAt < source.indexOf('t("action.updateAllCount"'), '一键更新按钮渲染在按钮区里')
+  assert.match(source, /onUpdateAll: updateAll/, '一键更新按钮要接到 updateAll')
+  assert.match(source, /self\.available \? self\.onApply : self\.onCheck/, '检查市场更新要接到自更新状态机')
 })
 check('已安装列表两个页签都会加载（角标与列表都依赖它）', () => {
   const at = source.indexOf('React.useEffect(function () {')
@@ -176,17 +180,33 @@ check('自更新按钮在文案上区分检查中/已是最新/可更新/更新�
   assert.match(source, /selfAvailable \? t\("action\.updateSelf"/)
   assert.match(source, /selfPhase === "ready" \? t\("action\.selfCurrent"\)/)
 })
-check('「更新插件」点了必须有反应：切到「可更新」页签 + 忙碌态 + 结果回执', () => {
-  // 用户先报「点更新插件没有任何反馈」，后来又要求把它做成页签（已安装右边那个位置）。
-  // 现在「有反应」由两件事保证：整页内容出现（切页签）+ 重读完成必定给一句话。
-  assert.match(source, /function goUpdates\(\)/, '头部按钮应有唯一入口 goUpdates')
-  assert.match(source, /setTab\("updates"\)/, '点按钮必须切到「可更新」页签')
-  assert.match(source, /updatesBusy \? el\(IconSpinner/, '按钮在检查中要转圈')
-  assert.match(source, /updatesBusy \? t\("action\.checkingUpdates"\)/, '按钮在检查中要换文案')
-  assert.match(source, /"aria-busy": updatesBusy \? "true" : "false"/, '按钮要暴露 aria-busy')
-  assert.match(source, /loadInstalled\(\{ announce: true \}\)/, '点按钮要触发带回执的重读')
+check('入口与反馈：页签是入口，两个新按钮各带忙碌态 + 回执；自动检查规则齐全', () => {
+  // 入口：头部按钮删掉后，第三个页签是唯一入口，点它仍要给回执。
+  assert.match(source, /function goUpdates\(\)/, '打开可更新页签的入口函数')
+  assert.match(source, /onClick: goUpdates/, '第三个页签要接到这个入口')
+  assert.match(source, /loadInstalled\(\{ announce: true \}\)/, '打开页签要触发带回执的重读')
   assert.match(source, /t\("notice\.updatesFound"/, '有更新要给回执')
   assert.match(source, /t\("notice\.updatesNone"/, '没有更新也要给回执')
+  // 新按钮 1：检查市场更新（原头部按钮搬来）
+  assert.match(source, /"aria-busy": self\.busy \? "true" : "false"/, '检查市场更新要暴露 aria-busy')
+  assert.match(source, /runSelfCheck\(function \(error, info\)/, '检查结果要回到回执气泡')
+  // 新按钮 2：一键更新
+  assert.match(source, /"aria-busy": batchRunning \? "true" : "false"/, '一键更新要暴露 aria-busy')
+  assert.match(source, /t\("notice\.updateAllStart"/, '一键更新开始要有回执')
+  assert.match(source, /t\("notice\.updateAllDone"/, '一键更新结束要有汇总回执')
+  assert.match(source, /outcome && outcome\.pending/, '卡在「要批准构建脚本」时必须暂停批量')
+  // 自动检查规则（用户定的）：启动查一次本体更新，之后每小时查一次插件更新
+  assert.match(source, /PLUGIN_CHECK_INTERVAL_MS = 60 \* 60 \* 1000/, '每小时检查一次插件更新')
+  assert.match(source, /startUpdateScheduler\(\);/, 'apply 里要启动调度')
+  assert.match(source, /if \(schedulerStarted\) return;/, '调度必须有守卫，不能重复建定时器')
+  assert.match(source, /runSelfCheck\(\);/, '启动时检查一次本体更新')
+})
+check('回执气泡有退场：先 data-open=false 沉下去，200ms 后才卸载', () => {
+  assert.match(source, /var NOTICE_CLOSE_MS = 200;/, '退场时长常量')
+  assert.match(css, /\.dshpm-notice\[data-open="false"\][^}]*opacity:0/, '退场态规则')
+  assert.match(source, /dismissNotice\(\)/, '关闭必须走 dismissNotice，而不是直接 setNotice(null)')
+  assert.match(source, /open: noticeClosing \? false : true/, '渲染时把退场态传给气泡')
+  assert.match(css, /backdrop-filter:blur/, '气泡加了毛玻璃质感')
 })
 check('第三个页签「可更新」：排在已安装右边、带计数角标、切过去渲染整页内容', () => {
   const discoverAt = source.indexOf('t("tab.discover")')
