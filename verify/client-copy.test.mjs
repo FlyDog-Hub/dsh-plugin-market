@@ -252,6 +252,16 @@ check('自更新按钮四态状态机：插件市场更新/正在更新…/更�
   assert.match(zhBlock, /"action\.selfDone": "更新成功"/, '装完显示「更新成功」')
   assert.match(zhBlock, /"action\.checkSelf": "插件市场更新"/, '按钮已按用户要求改名')
   assert.equal(zhBlock.includes('"action.selfCurrent"'), false, '「已是最新」挨着插件更新只会误导')
+  // 用户报「第一次进入这个界面怎么会是再次检查」：启动时的自动检查没更新时必须留在初始态，
+  // 「再次检查」只属于用户手动点过的那次（runSelfCheck 的 manual 区分）。
+  assert.match(source,
+    /manual === true \|\| \(info && info\.updateAvailable === true\) \? "ready" : "idle"/,
+    '自动检查无更新回 idle（首次进入仍是「插件市场更新」），手动查过或有新版本才 ready')
+  const selfCheckAt = source.indexOf('function checkSelfUpdate')
+  const applySelfAt = source.indexOf('function applySelfUpdate')
+  assert.ok(selfCheckAt > 0 && applySelfAt > selfCheckAt, 'checkSelfUpdate 仍在 applySelfUpdate 之前')
+  assert.match(source.slice(selfCheckAt, applySelfAt), /\}, true\);/,
+    '页面按钮那次必须传 manual=true（查完没更新才落「再次检查」）')
 })
 check('入口与反馈：页签是入口，两个新按钮各带忙碌态 + 回执；自动检查规则齐全', () => {
   // 入口：头部按钮删掉后，第三个页签是唯一入口，点它仍要给回执。

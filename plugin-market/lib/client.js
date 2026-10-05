@@ -1291,7 +1291,8 @@ window.__ModuleLoader__.load({
     // 1) 每次启动 DSH：client 模块随宿主 apply 一次 → 立刻检查一次**市场本体**更新；
     // 2) 启动后每 1 小时 → 检查一次**插件**更新（读 /installed，宿主已把目录 join 进来），
     //    结果同时喂给侧边栏角标与「可更新」页签。
-    // 状态放模块级：页面打开时直接是「已检查过」的样子，不必再点一次「插件市场更新」。
+    // 状态放模块级，但自动检查**不替用户按下**：没更新时停在初始态——第一次进页面按钮是
+    // 「插件市场更新」而不是「再次检查」（用户报的问题）；发现新版本才亮「更新到 x.y.z」。
     var PLUGIN_CHECK_INTERVAL_MS = 60 * 60 * 1000;
     // 装完的「更新成功」停留时长：装完立刻跳回「插件市场更新」，用户看不到装好了这一步。
     var SELF_DONE_MS = 3000;
@@ -1346,10 +1347,14 @@ window.__ModuleLoader__.load({
       notifyListeners(selfCheckListeners, next);
     }
 
-    /** 检查市场本体更新：启动规则与页面按钮共用同一个状态机（所以按钮直接显示检查结果）。
+    /** 检查市场本体更新：启动规则与页面按钮共用同一个状态机。
      *  onResult 可选——页面用它把结果翻译成回执气泡；启动时的那次检查没有回执。
+     *  manual 标记这次是不是**用户按按钮**发起的（用户报「第一次进入这个界面怎么会是再次检查」：
+     *  「再次检查」是给点过的人看的态，第一次进页面还没点过就该是初始的「插件市场更新」）。
+     *  启动那次自动检查没更新时留在 idle；发现新版本照常亮「更新到 x.y.z」——那是给用户的信息，
+     *  不是替他把状态机按到「已检查过」。
      *  fetch/URL 不可用的环境（回归测试会调用 apply）不能让 apply 崩掉，所以这里兜住同步异常。 */
-    function runSelfCheck(onResult) {
+    function runSelfCheck(onResult, manual) {
       if (selfCheckState.phase === "checking") return;
       setSelfCheck({ phase: "checking", data: selfCheckState.data, error: null, at: selfCheckState.at });
       var request = null;
@@ -1362,7 +1367,10 @@ window.__ModuleLoader__.load({
       }
       request.then(function (payload) {
         var info = payload && payload.selfUpdate ? payload.selfUpdate : {};
-        setSelfCheck({ phase: "ready", data: info, error: null, at: Date.now() });
+        // 手动查完没更新也真查过 → ready（「再次检查」）；自动查、没更新 → 回 idle（仍是
+        // 「插件市场更新」）；自动查、有更新 → ready，交给 available 分支配「更新到 x.y.z」。
+        var phase = manual === true || (info && info.updateAvailable === true) ? "ready" : "idle";
+        setSelfCheck({ phase: phase, data: info, error: null, at: Date.now() });
         if (typeof onResult === "function") onResult(null, info);
       }, function (error) {
         setSelfCheck({ phase: "error", data: null, error: error, at: Date.now() });
@@ -2327,8 +2335,8 @@ window.__ModuleLoader__.load({
       var setCopied = copiedState[1];
 
       // 市场自身更新的状态机：idle → checking → ready（可能 updateAvailable）→ installing → ready
-      // 状态在**模块级**（启动时的自动检查已经写过一次），这里只是订阅它——页面一打开
-      // 按钮就是「已是最新 / 更新到 x.y.z」，不用先点一次。
+      // 状态在**模块级**（启动时的自动检查写过一次），这里只是订阅它——有新版本时页面一打开
+      // 就是「更新到 x.y.z」；没更新时仍是初始的「插件市场更新」（「再次检查」只属于手动点过的那次）。
       var selfState = React.useState(getSelfCheck);
       var selfUpdate = selfState[0];
       var setSelfUpdate = selfState[1];
@@ -2788,9 +2796,10 @@ window.__ModuleLoader__.load({
       }
 
       /**
-       * 「插件市场更新」（已搬进「可更新」页）：走模块级状态机——启动时那次自动检查写的就是
-       * 它，所以页面一打开按钮已经是结果；再点一次才打 /self-update（宿主侧有 10 分钟缓存，
-       * 连点不会打爆 CDN），结果进回执气泡。
+       * 「插件市场更新」（已搬进「可更新」页）：走模块级状态机，这次是**手动**（manual=true）——
+       * 没更新才落「再次检查」，那是给点过的人看的；启动时的自动检查只负责把**有的**新版本亮成
+       * 「更新到 x.y.z」，没更新时留在初始态（用户报「第一次进入就是再次检查」）。宿主侧有
+       * 10 分钟缓存，连点不会打爆 CDN；结果进回执气泡。
        */
       function checkSelfUpdate() {
         if (selfUpdate.phase === "checking" || selfUpdate.phase === "installing") return;
@@ -2808,7 +2817,7 @@ window.__ModuleLoader__.load({
             // 没有新版本时说**本机**版本：远端 latest 可能低于本机（本机是 link 开发装），
             // 报远端版本会出现「标题写着 1.1.4、提示却说已是最新 v1.1.3」这种自相矛盾。
             : { kind: "success", text: t("notice.selfCurrent", { version: version || info.latest }) });
-        });
+        }, true);
       }
 
       /** 「更新到 x.y.z」：下载 → 三道校验 → 交给宿主安装。宿主半要重启 DSH 才会换代码。 */
@@ -2925,6 +2934,7 @@ window.__ModuleLoader__.load({
       var selfAvailable = !!(selfInfo && selfInfo.updateAvailable === true);
       // 按钮文字的状态机（用户定的四态）：初始「插件市场更新」→ 点击「正在更新…」→
       // 装完「更新成功」（停留 SELF_DONE_MS）→ 检查完没有更新「再次检查」。
+      // 启动时的自动检查没更新不算「检查过」——首次进入停在初始态，见 runSelfCheck(manual)。
       var selfLabel = selfPhase === "checking" ? t("action.checkingSelf")
         : selfPhase === "installing" ? t("action.updatingSelf")
           : selfPhase === "done" ? t("action.selfDone")

@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- **首次进入「可更新」页不再显示「再次检查」**（用户报：第一次进入这个界面怎么会是再次检查的
+  状态机，应该是检查商店更新）：根因是启动时那次**自动**检查把模块级状态机推到了 `ready`，
+  页面一打开按钮就成了「给点过的人看」的再次检查态。现在 `runSelfCheck(onResult, manual)`
+  区分来源——自动检查没更新时停在初始态，首次进入仍是「插件市场更新」；「再次检查」只属于
+  用户**手动点过**的那次检查。自动检查发现新版本时照常直接亮「更新到 x.y.z」（那是给用户的
+  信息，不是替他按下检查）；手动点 → 「正在更新…」→ 没更新 →「再次检查」的四态顺序不变。
+  回归：`verify/client-copy.test.mjs`（manual 分支断言）+ `verify/market-ui.e2e.mjs`
+  （首次进入断言 `data-state === "idle"` 且文案是「插件市场更新」）。
+
 ## 1.1.4
 
 **包名变更**：`dsh-market` → `deepseek-harness-market`（前序：`dsh-plugin-market` → `dsh-market`）。

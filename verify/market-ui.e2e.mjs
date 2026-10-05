@@ -345,6 +345,16 @@ try {
     Array.isArray(paneButtons) && paneButtons.length === 2 && /^检查更新/.test(paneButtons[0] || '') && /插件市场更新|正在更新|更新到|再次检查|Plugin market|Updating|Update to|Check again/.test(paneButtons[1] || ''),
     JSON.stringify(paneButtons),
   )
+  // 用户报「第一次进入这个界面怎么会是再次检查的状态机」：启动时的自动检查（桩恒回无更新、
+  // 拖 400ms）**不许**把按钮推进「已检查过」——先等它走完（aria-busy 落回 false），首次进入
+  // 必须是初始的「插件市场更新」且 data-state 为 idle；「再次检查」只属于下面手动点过的那次。
+  await waitFor(client, `(() => { const b = document.querySelectorAll('.dshpm-updatesActions button')[1]; return !!b && b.getAttribute('aria-busy') !== 'true'; })()`, 10000, '启动的自动检查走完（右键不在忙碌态）')
+  const selfBtnFirst = await evaluate(client, `(() => { const b = document.querySelectorAll('.dshpm-updatesActions button')[1]; return b ? { text: (b.textContent || '').trim(), state: b.getAttribute('data-state') } : null; })()`)
+  expect(
+    '首次进入可更新页：右键是初始「插件市场更新」（自动检查没更新不写「再次检查」）',
+    !!selfBtnFirst && (selfBtnFirst.text === '插件市场更新' || selfBtnFirst.text === 'Plugin market update') && selfBtnFirst.state === 'idle',
+    JSON.stringify(selfBtnFirst),
+  )
   const panePrimary = await evaluate(
     client,
     `Array.from(document.querySelectorAll('.dshpm-updatesActions button')).map(b => b.className.includes('dshpm-btn--primary'))`,
@@ -365,6 +375,7 @@ try {
 
   // 右键四态状态机（用户报「点不点都是一个」）：点下去必须真的换文案——
   // 桩恒定回「没有更新」，所以最终停在「再次检查」，中间那 400ms 是「正在更新…」。
+  // 首次进入是「插件市场更新」（上面已断言），这次是**手动**点的，才允许落「再次检查」。
   await evaluate(client, `(() => { const b = Array.from(document.querySelectorAll('.dshpm-updatesActions button'))[1]; if (b) b.click(); return true; })()`)
   const duringSelfCheck = await evaluate(client, `(() => { const b = document.querySelectorAll('.dshpm-updatesActions button')[1]; return b ? { text: (b.textContent || '').trim(), busy: b.getAttribute('aria-busy') } : null; })()`)
   expect(
@@ -387,7 +398,7 @@ try {
     `逐条=${JSON.stringify(perItemButtons)}`,
   )
   const selfState = await evaluate(client, `(() => { const b = document.querySelectorAll('.dshpm-updatesActions button')[1]; return b ? { state: b.getAttribute('data-state'), busy: b.getAttribute('aria-busy') } : null; })()`)
-  expect('「插件市场更新」按钮带状态机标记（启动时的自动检查已写过一次）', !!selfState && ['idle', 'checking', 'ready', 'error'].includes(selfState?.state), JSON.stringify(selfState))
+  expect('手动点过一次后右键停在 ready（「再次检查」态；首次进入是 idle，这里已不是）', !!selfState && selfState.state === 'ready', JSON.stringify(selfState))
 
   // 点「一键更新」：顺序逐个跑，第一条 restart-required（必须计成功）、第二条注入 EPERM 占用失败
   // → 汇总必须如实写「成功 1、失败 1」。
