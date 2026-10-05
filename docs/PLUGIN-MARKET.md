@@ -124,7 +124,7 @@ DeepSeek Harness 的插件就是 Cordis 插件，Web GUI 的插件还必须额�
   有几个新版本（角标数字），点开就地展开可更新列表，每一条单独一个「更新到 x.y.z」。
   这是刻意的保守选择：一次只改一个依赖，失败不会连坐，也好看清是哪个包变了。
 - **动效服务于状态，不服务于炫技**（v1.1.0）：进场错峰、hover 抬升、按钮按下回弹、
-  页签底线滑动、提示条滑入 + 倒计时线、可更新面板就地展开。三条硬约束写在
+  页签底线滑动、回执气泡（toast）贴底滑入 + 倒计时线、可更新面板就地展开。三条硬约束写在
   [API-CONTRACT §4](API-CONTRACT.md)（基础态不写 `opacity:0`、只动 transform/opacity/max-height、
   升入动画用 `backwards`），并且 `prefers-reduced-motion: reduce` 下**全部关闭而内容照旧完整可见**——
   真实浏览器里 A/B 验过，不是只看代码。
@@ -203,8 +203,9 @@ REPORT 的「工具缺陷与修正」一节——验收报告承认自己的测�
   再切成 `reduce` 证明 `animation-name` 变成 `none` 而列表行仍然在（内容不会消失）；
 - 页面控制台无插件错误。
 
-结论：**24/24 通过**（v1.1.3 加了 5 条布局断言后为 **29/29**；修「点更新插件没反馈」时再加 3 条——
-点完必须有结果回执、面板必须在视区里、发现页 + 520px 矮视口下同样成立——为 **32/32**），截图落在 `verify/logs/ui/`
+结论：**24/24 通过**（v1.1.3 加了 5 条布局断言后为 **29/29**；修「点更新插件没反馈」时加 3 条——
+点完必须有结果回执、面板必须在视区里、发现页 + 520px 矮视口下同样成立——**32/32**；回执改成悬浮
+气泡后再加 3 条几何断言（`fixed` / 贴视口底 / 水平居中）→ **35/35**），截图落在 `verify/logs/ui/`
 （`market-updates-open.png`、`market-header-zoom.png`、`market-header-closed.png`、
 `market-reduced-motion.png`、`market-short-viewport.png`、`market-updates-short-viewport.png`）。
 顺带记一个踩点：headless Chromium **默认就是 `prefers-reduced-motion: reduce`**，

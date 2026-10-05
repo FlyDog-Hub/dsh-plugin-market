@@ -923,10 +923,11 @@ window.__ModuleLoader__.load({
 .dshpm-entryLabel { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .dshpm-root { display:flex; flex-direction:column; gap:12px; box-sizing:border-box; width:100%; height:100%; min-height:0; overflow:auto; padding:16px clamp(16px,3vw,32px) 32px; color:var(--dsw-alias-label-primary,#1a1a1a); background:var(--dsw-alias-bg-base,transparent); }
 /* 面板根是「定高 + 可滚动」的 flex 列，直接子项默认 flex-shrink:1；而 flex 项一旦带非 visible 的
-   overflow（例如通知条为了底部倒计时线加的 overflow:hidden），它的**自动最小尺寸就变成 0**——
-   于是全部溢出量都压到它身上，文字被裁成一条。真实截图就是这样：通知条自然高度 36px，
-   实际只渲染 16px，提示只剩半行。正确行为是「根本身滚动」，所以直接子项一律不参与收缩。
-   最小复现与实测数据见 verify/REPORT.md §12.12。 */
+   overflow，它的**自动最小尺寸就变成 0**——于是全部溢出量都压到它身上，文字被裁成一条。真实截图
+   就是这样：当年的页内通知条自然高度 36px，实际只渲染 16px，提示只剩半行。正确行为是「根本身滚动」，
+   所以直接子项一律不参与收缩。最小复现与实测数据见 verify/REPORT.md §12.12。
+   （通知条已改成 position:fixed 的悬浮气泡，不再参与文档流，也就压不到它了；这条规则仍然管着
+   横幅、页签、网格这些可能带 overflow 的区块。） */
 .dshpm-root > * { flex:0 0 auto; }
 .dshpm-header { display:flex; align-items:flex-start; gap:12px; flex-wrap:wrap; }
 .dshpm-headerMain { flex:1 1 240px; min-width:0; }
@@ -981,7 +982,10 @@ window.__ModuleLoader__.load({
 .dshpm-badge--success { color:var(--dsw-alias-state-success-primary,#1f9d55); border-color:var(--dsw-alias-state-success-primary,#1f9d55); }
 .dshpm-badge--warn { color:var(--dsw-alias-state-warn-primary,#b7791f); border-color:var(--dsw-alias-state-warn-primary,#b7791f); }
 .dshpm-badge--error { color:var(--dsw-alias-state-error-primary,#d93025); border-color:var(--dsw-alias-state-error-primary,#d93025); }
-.dshpm-notice { display:flex; align-items:flex-start; gap:8px; box-sizing:border-box; padding:8px 10px; border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.1)); border-left-width:3px; border-radius:var(--dsw-radius-md,8px); background:var(--dsw-alias-bg-layer-1,transparent); font-size:.84em; }
+/* ── 回执气泡（Android toast 那种）：position:fixed 悬在视口**底部居中**，不占文档流——
+   出现或消失都不推动布局，也不用滚动才看得见。旧版是页内提示条：挤在头部下面一格，
+   还得靠根节点滚到那一页才看得见。kind 仍用 data-kind 表达，图标配色不变。 */
+.dshpm-notice { position:fixed; left:0; right:0; bottom:24px; z-index:60; display:flex; align-items:flex-start; gap:8px; box-sizing:border-box; width:fit-content; max-width:min(560px, calc(100vw - 32px)); margin:0 auto; padding:9px 12px; border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.1)); border-left-width:3px; border-radius:14px; background:var(--dsw-alias-bg-layer-2,rgba(255,255,255,.96)); box-shadow:0 8px 28px rgba(0,0,0,.18); font-size:.84em; }
 .dshpm-notice[data-kind="success"] { border-left-color:var(--dsw-alias-state-success-primary,#1f9d55); }
 .dshpm-notice[data-kind="warn"] { border-left-color:var(--dsw-alias-state-warn-primary,#b7791f); }
 .dshpm-notice[data-kind="error"] { border-left-color:var(--dsw-alias-state-error-primary,#d93025); }
@@ -1100,7 +1104,7 @@ window.__ModuleLoader__.load({
 .dshpm-tab[data-active="true"] { border-bottom-color:transparent; }
 .dshpm-tab::after { content:""; position:absolute; left:10px; right:10px; bottom:0; height:2px; border-radius:2px; background:var(--dsw-alias-brand-primary,#4d6bfe); transform:scaleX(0); transform-origin:right center; transition:transform .26s cubic-bezier(.22,1,.36,1); }
 .dshpm-tab[data-active="true"]::after { transform:scaleX(1); transform-origin:left center; }
-.dshpm-notice { animation:dshpm-slidein .3s cubic-bezier(.22,1,.36,1) backwards; }
+.dshpm-notice { animation:dshpm-toastin .26s cubic-bezier(.22,1,.36,1) backwards; }
 .dshpm-banner { animation:dshpm-rise .28s cubic-bezier(.22,1,.36,1) backwards; }
 .dshpm-detail { animation:dshpm-expand .26s cubic-bezier(.22,1,.36,1) backwards; }
 .dshpm-empty { animation:dshpm-rise .3s cubic-bezier(.22,1,.36,1) backwards; }
@@ -1115,7 +1119,9 @@ window.__ModuleLoader__.load({
 .dshpm-count[data-pop="true"] { animation:dshpm-pop .34s cubic-bezier(.22,1,.36,1) backwards, dshpm-breathe 2.6s ease-in-out 3; }
 .dshpm-updatesPanel[data-open="true"] { animation:dshpm-expand .3s cubic-bezier(.22,1,.36,1) backwards; }
 .dshpm-skeleton { animation:dshpm-shimmer 1.3s linear infinite; }
-.dshpm-notice { position:relative; overflow:hidden; }
+/* overflow 只为那条倒计时线服务（线贴底、要被圆角裁掉）。定位写在上面的基础规则里：fixed。
+   注意别再给它写 position:relative——后面的规则会盖掉 fixed，气泡就掉回文档流里了。 */
+.dshpm-notice { overflow:hidden; }
 .dshpm-noticeTimer { position:absolute; left:0; right:0; bottom:0; height:2px; background:currentColor; opacity:.3; transform-origin:left center; animation:dshpm-countdown 4.6s linear forwards; }
 @keyframes dshpm-countdown { from { transform:scaleX(1); } to { transform:scaleX(0); } }
 @keyframes dshpm-shimmer { 0% { background-position:200% 0; } 100% { background-position:-200% 0; } }
@@ -1125,6 +1131,7 @@ window.__ModuleLoader__.load({
 @keyframes dshpm-fade { from { opacity:0; } to { opacity:1; } }
 @keyframes dshpm-expand { from { opacity:0; transform:translateY(-4px); } to { opacity:1; transform:none; } }
 @keyframes dshpm-slidein { from { opacity:0; transform:translateX(14px); } to { opacity:1; transform:none; } }
+@keyframes dshpm-toastin { from { opacity:0; transform:translateY(16px) scale(.96); } to { opacity:1; transform:none; } }
 @keyframes dshpm-pop { 0% { transform:scale(.82); } 60% { transform:scale(1.06); } 100% { transform:scale(1); } }
 @keyframes dshpm-breathe { 0%, 100% { opacity:1; } 50% { opacity:.62; } }
 @keyframes dshpm-glow { 0%, 100% { box-shadow:0 1px 2px rgba(77,107,254,.28); } 50% { box-shadow:0 2px 14px rgba(77,107,254,.55); } }

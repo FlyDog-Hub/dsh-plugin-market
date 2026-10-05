@@ -143,6 +143,18 @@ check('样式表定义了新增组件：面板、进度条、角标、倒计时�
     assert.ok(css.includes(selector), `样式表缺少 ${selector}`)
   }
 })
+check('回执是悬浮气泡（Android toast）：fixed + 贴底居中 + 不占文档流', () => {
+  const rules = css.match(/\.dshpm-notice\s*\{[^}]*\}/g) || []
+  const base = rules.find((rule) => /position:/.test(rule))
+  assert.ok(base, '应当有一条带 position 的 .dshpm-notice 基础规则')
+  assert.match(base, /position:\s*fixed/, '气泡必须是 fixed 定位（不占文档流，出现时不推挤布局）')
+  assert.match(base, /bottom:\s*\d+px/, '气泡要贴视口底部')
+  assert.match(base, /margin:\s*0 auto/, '气泡要水平居中')
+  assert.match(base, /max-width:/, '气泡要有最大宽度，长文案换行而不是撑满整屏')
+  const relative = rules.filter((rule) => /position:\s*relative/.test(rule))
+  assert.deepEqual(relative, [], '后面的规则不得写 position:relative 把 fixed 盖回文档流')
+  assert.match(css, /@keyframes dshpm-toastin/, '气泡要有自己的入场动画 keyframes')
+})
 check('两个按钮在源码里都渲染了，且排在「刷新目录」之前（蓝圈位置）', () => {
   const updatesBtn = source.indexOf('dshpm-btn--updates')
   const selfBtn = source.indexOf('selfAvailable ? applySelfUpdate : checkSelfUpdate')

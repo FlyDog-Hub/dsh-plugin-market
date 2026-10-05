@@ -49,6 +49,20 @@ dsh plugin --profile <profile> add <新包路径或 npm 名>
 
 回归断言加在 `verify/client-copy.test.mjs`（忙碌态 / announce 回执 / scrollIntoView 三条）。
 
+**回执统一成悬浮气泡**（Android toast 那种；用户要求「这几个更新弹出改成统一的气泡弹窗」）：
+
+- `.dshpm-notice` 从「页内提示条」改成 `position:fixed`：贴视口**底部居中**（`left:0; right:0;
+  margin:0 auto`）、圆角 14px + 投影、`max-width:min(560px, calc(100vw - 32px))` 超宽换行。
+  **不占文档流**——出现/消失都不推动布局，也不用滚到那一页才看得见（旧版挤在头部下面一格）。
+- 入场动画换成 `dshpm-toastin`（自下而上 + 轻微缩放，`backwards` 填充）；`prefers-reduced-motion`
+  下照旧全部关闭而内容完整可见。
+- 一字未改：kind 配色与图标、4.6s 自动收起与倒计时线、警告/错误保留到手动关闭、`role`/`aria-live`。
+- **横幅仍是页内条**（目录过期、只读、构建待批准）：那是要用户处理的持久状态，不是回执。
+- 断言：`client-copy.test.mjs` 加样式不变量（fixed / 贴底 / 居中 / 后续规则不得用
+  `position:relative` 把它盖回文档流）；`market-ui.e2e.mjs` 加 3 条**几何**断言——真引擎里量
+  `getBoundingClientRect`，因为祖先一旦带 `transform`/`filter` 就会抢走 fixed 的包含块，那时
+  `position` 的计算值仍然是 `fixed`，只有几何量得出来 → **35/35**
+
 ## 1.1.3
 
 修「顶部提示条显示不全」——提示条被压成一条、文字只剩半行（用户截图就是这样）。

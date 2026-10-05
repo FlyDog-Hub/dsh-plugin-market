@@ -169,6 +169,34 @@ try {
   expect('提示条高度足够容纳整行文字（≥ 30px）', Number(noticeMetrics?.offset) >= 30, JSON.stringify(noticeMetrics))
   expect('提示条文案完整可读（不是被裁掉半行）', /发现 2 个插件有新版本/.test(String(noticeMetrics?.text)), String(noticeMetrics?.text))
 
+  // 回执改成了 Android toast 那种悬浮气泡。computed position 一定是 'fixed'，那不算证据；
+  // 真正的判据是几何位置——若某个祖先带 transform/filter 把 fixed 的包含块抢走，
+  // 气泡会贴到那个祖先的底边而不是视口底边，下面两条就会红。
+  const toastBox = await evaluate(
+    client,
+    `(() => {
+       const n = document.querySelector('.dshpm-notice');
+       const cs = getComputedStyle(n);
+       const r = n.getBoundingClientRect();
+       return { position: cs.position, left: Math.round(r.left), width: Math.round(r.width), bottom: Math.round(r.bottom), vh: window.innerHeight, vw: window.innerWidth };
+     })()`,
+  )
+  expect(
+    '回执是悬浮气泡：position 固定为 fixed（不占文档流，出现时不推动布局）',
+    toastBox?.position === 'fixed',
+    JSON.stringify(toastBox),
+  )
+  expect(
+    '气泡贴在视口底部（不再是页内那一行）',
+    Number(toastBox?.bottom) <= Number(toastBox?.vh) && Number(toastBox?.vh) - Number(toastBox?.bottom) < 120,
+    JSON.stringify(toastBox),
+  )
+  expect(
+    '气泡水平居中',
+    Math.abs((Number(toastBox?.left) + Number(toastBox?.width) / 2) - Number(toastBox?.vw) / 2) <= 2,
+    JSON.stringify(toastBox),
+  )
+
   console.log('\n[3] 动效（真实计算样式）')
   // 必须先等卡片真的出现：目录是一次网络往返，刚打开面板时还是骨架屏。
   await waitFor(client, `document.querySelector('.dshpm-card') !== null`, 30000, '发现页的第一张卡片')
