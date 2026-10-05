@@ -1,16 +1,21 @@
 /**
  * 市场自身的更新通道。
  *
- * 三个源都试，顺序按「新鲜度」排（2026-10-04 在本机实测，不用代理）：
+ * 四个源都试，顺序按「新鲜度」排（2026-10-04 在本机实测，不用代理）：
  *
- *   1. GitHub Releases API：`releases/latest` 立刻返回 v1.1.1（1.6s / 450ms），是权威且最新的。
+ *   1. GitHub Releases API：`releases/latest` 立刻返回最新标签（1.6s / 450ms），是权威且最新的。
+ *      **v1.1.6 起 releases/ 目录已从仓库移除**（打包产物只挂 GitHub Release 附件，回退也从那里下载），
+ *      所以这一源不再依赖仓库里的 index.json：附件元数据自带 sha256（`digest`）与字节数（`size`），
+ *      条目当场组装；附件缺 digest 时才退回老路（该标签的 releases/index.json，v1.1.5 及更早的标签仍带）。
  *      代价是**匿名限流 60 次/小时/IP**，且会与机器上其它 GitHub 客户端共享这个额度；
  *      被限流时返回 403，我们把它当成该源失败，继续往下走。10 分钟缓存把点击量封在 ~6 次/小时。
  *   2. jsDelivr 标签列表：不限流、CDN 缓存、85–2100ms，但**列表会滞后**——
  *      实测发布一小时后它仍然只有旧版本。
  *   3. jsDelivr `@main` 的 releases/index.json：同样是缓存，实测滞后（分支内容可缓存 12 小时）。
+ *      仓库不再存这份清单后此源只对 ≤v1.1.5 有意义，新版本上会 404 并如实记进 attempts。
  *   4. 兜底：按 MAJOR.MINOR.PATCH 的常规递进探三个候选标签。**任意标签是按需取的**，
- *      刚推完 `@v<tag>/…` 立刻 200，所以这一步能追上前面三个源的滞后。
+ *      刚推完 `@v<tag>/…` 立刻 200——但清单本身随 releases/ 一并下线，新版本同样会 404 记档。
+ *   换句话说：新版本的检查与安装靠第 1 源 + 附件下载；2/3/4 是 ≤v1.1.5 的兼容与限流时的补位。
  *
  * 更正一条曾经的错误结论：早先我写「本机直连 api.github.com 一律 403、github.com 被重置」，
  * 并把原因归给 GFW。实际是当时仓库还是 **private**（未鉴权取 releases/latest 就是 404），
@@ -18,9 +23,9 @@
  * github.com 200、Release 附件 200（2.7s 直连 / 737ms 走代理），sha256 与本地构建一致。
  *
  * 信任链（三道，缺一不可）：
- *   1. 路径形状：tarball 必须落在 `releases/*.tgz`，且拼在固定 CDN 前缀之后——
- *      index.json 里写别的 URL 不会被采信；
- *   2. sha256：与 index.json 记的哈希逐字节比对（防截断/损坏/中间人换包）；
+ *   1. 路径形状：tarball 必须落在 `releases/*.tgz`（相对约定形状）——index/条目里写别的 URL 不会被采信；
+ *   2. sha256：与清单记的哈希逐字节比对（防截断/损坏/中间人换包）；
+ *      清单 = 老路的 index.json，或 GitHub 附件的 `digest`（同一个字段名 `sha256`，来源不同）；
  *   3. 产物自证：解开 tarball 读 package/package.json，名字与版本必须与预期一致。
  * 说明：第 2 道不防「清单与产物一起被换」，那需要独立签名密钥；
  * 现在的定位是「防损坏与防单点替换」，写进 docs/API-CONTRACT.md §2.9 如实标注。
@@ -260,7 +265,29 @@ function buildSources() {
         const tag = typeof res.raw?.tag_name === 'string' ? res.raw.tag_name : ''
         const version = parseVersion(tag)
         if (version === null) return { ok: false, reason: 'Release 的 tag_name 不是可解析的版本号' }
-        return { ok: true, version: tag.trim().replace(/^v/, ''), tag, entryFromTag: true }
+        const versionText = tag.trim().replace(/^v/, '')
+        // releases/ 目录已从仓库移除：新版本没有 index.json 可查，条目直接由附件元数据组装——
+        // digest 是 GitHub 对上传字节算的 sha256、size 是字节数，信任链第 2 道照样有据可依。
+        const assets = Array.isArray(res.raw?.assets) ? res.raw.assets : []
+        const asset = assets.find((item) => typeof item?.name === 'string' && item.name === `${MARKET_PACKAGE}-${versionText}.tgz`)
+        const digest = typeof asset?.digest === 'string' && asset.digest.startsWith('sha256:')
+          ? asset.digest.slice('sha256:'.length).toLowerCase()
+          : ''
+        if (asset !== undefined && isSha256Hex(digest)) {
+          const entry = normalizeEntry({
+            version: versionText,
+            tag,
+            versionCode: version.major * 10000 + version.minor * 100 + version.patch,
+            build: null, // 提交数.短哈希只有打包机知道；客户端不消费 build，缺了就不显示
+            tarball: `releases/${MARKET_PACKAGE}-${versionText}.tgz`,
+            sha256: digest,
+            bytes: Number.isSafeInteger(asset.size) && asset.size > 0 ? asset.size : null,
+            releasedAt: typeof res.raw.published_at === 'string' ? res.raw.published_at : null
+          })
+          if (entry !== null) return { ok: true, version: versionText, tag, entry, entryFromTag: false }
+        }
+        // 附件缺 digest：退回老路（该标签的 releases/index.json）——v1.1.5 及更早的标签仍带这份清单。
+        return { ok: true, version: versionText, tag, entryFromTag: true }
       }
     },
     {
@@ -363,7 +390,7 @@ export function createSelfUpdater(options = {}) {
     }
 
     if (candidates.length === 0) {
-      // 列表源全都不可用；下面仍会试标签探测（任意标签是按需取的，可能只有它通），
+      // 列表源全都不可用；下面仍会试标签探测（≤v1.1.5 的标签仍带清单，任意标签是按需取的），
       // 所以这里只记日志，是否算失败由 best 决定。
       logger.warn?.(`[${MARKET_PACKAGE}] 三个列表源都没给出可用清单：${attempts.map((attempt) => `${attempt.label}：${attempt.reason}`).join('；')}`)
     }
@@ -378,6 +405,8 @@ export function createSelfUpdater(options = {}) {
     // 缓存 12 小时），而**任意标签是按需取的**——刚推完标签 `@v<tag>/…` 立刻就是 200。
     // 所以列表都说「没有更高版本」时，按常规递进方向探三个候选标签：命中即确实有新版本，
     // 而且那一版的清单就在同一个标签里。有界（最多 3 次）、确定性，不是盲目猜版本。
+    // 如实标注：releases/ 目录下线后（v1.1.6 起）新版本的标签里没有清单，探测只会 404 并记档；
+    // 它继续为 ≤v1.1.5 的标签、以及「第 1 源被限流但标签带清单」的情况补位。
     if (best === null || current === null || !isNewer(best.entry.version, current)) {
       for (const candidateVersion of current === null ? [] : nextCandidates(current)) {
         if (best !== null && !isNewer(candidateVersion, best.entry.version)) continue

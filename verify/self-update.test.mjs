@@ -240,6 +240,46 @@ await checkAsync('第一个源就给出更高版本时早退出，不再问其�
   assert.equal(fetchImpl.calls.some((url) => url.includes('data.jsdelivr.com')), false, '已有明确答案就不该再问 jsDelivr')
 })
 
+await checkAsync('GitHub 附件带 digest：不查仓库里的 releases/index.json 也能给出可安装条目', async () => {
+  const digestHex = 'a'.repeat(64)
+  const fetchImpl = fakeFetch([
+    ['api.github.com', jsonResponse({
+      tag_name: 'v1.1.0',
+      published_at: '2026-10-05T17:33:36Z',
+      assets: [
+        { name: 'deepseek-harness-market-1.1.0.tgz', size: 465679, digest: `sha256:${digestHex}` },
+        { name: 'version.json', size: 219, digest: `sha256:${'b'.repeat(64)}` },
+      ],
+    })],
+    // 故意不给 releases/index.json：releases/ 目录已从仓库移除，GitHub 源必须自给自足。
+  ])
+  const updater = createSelfUpdater({ fetchImpl, current: '1.0.0', logger: { warn() {} } })
+  const result = await updater.check({ force: true })
+  assert.equal(result.ok, true)
+  assert.equal(result.channel, 'github-release')
+  assert.equal(result.latest, '1.1.0')
+  assert.equal(result.updateAvailable, true)
+  assert.equal(result.installable, true)
+  assert.equal(result.sha256, digestHex, 'sha256 来自附件 digest')
+  assert.equal(result.bytes, 465679, '字节数来自附件 size')
+  assert.equal(result.versionCode, 10100, 'versionCode 由版本号按公式算出')
+  assert.equal(result.releasedAt, '2026-10-05T17:33:36Z')
+  assert.equal(result.url, 'https://cdn.jsdelivr.net/gh/Winnie-0721/dsh-plugin-market@v1.1.0/releases/deepseek-harness-market-1.1.0.tgz')
+  assert.equal(fetchImpl.calls.some((url) => url.includes('releases/index.json')), false, '不该再去仓库里找清单')
+})
+
+await checkAsync('GitHub 附件缺 digest 时退回老路：仍按标签里的 index.json 取条目', async () => {
+  const fetchImpl = fakeFetch([
+    ['api.github.com', jsonResponse({ tag_name: 'v1.1.0', assets: [{ name: 'deepseek-harness-market-1.1.0.tgz', size: 123 }] })],
+    ['releases/index.json', jsonResponse(REPO_INDEX('1.1.0'))],
+  ])
+  const updater = createSelfUpdater({ fetchImpl, current: '1.0.0', logger: { warn() {} } })
+  const result = await updater.check({ force: true })
+  assert.equal(result.ok, true)
+  assert.equal(result.channel, 'github-release')
+  assert.equal(result.sha256, 'd'.repeat(64), '退回清单里的哈希')
+})
+
 await checkAsync('三个源都挂了：如实报不可用，并带三条源记录（外加有界的标签探测）', async () => {
   const fetchImpl = fakeFetch([])
   const updater = createSelfUpdater({ fetchImpl, current: '1.0.0', logger: { warn() {} } })
