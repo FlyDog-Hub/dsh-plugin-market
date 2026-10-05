@@ -3,6 +3,7 @@
 - **结论：通过。修复后复验一轮 53 条断言全绿（PASS=53 FAIL=0），运行 id `verify-20261003-221755`。**
 - **本轮是 v1.0.0「桌面壳兼容性」修复的独立复验**，不是重复上一次：上一轮 47/47（`verify-20261003-214407`）**不覆盖桌面壳形状**，正是它漏掉了线上那个「Electron 里所有写操作 403」的真缺陷。两轮的关系见 §11.1。
 - 被测对象：`E:\AI\DeepSeek Harness\Dsh\plugin-market`（`dsh-plugin-market` v1.0.0，host `lib/index.js` + `lib/catalog.js` + `lib/catalog-npm.js` + `lib/http.js`，client `lib/client.js`）
+- **路径说明（后记）**：本报告是历史验收记录，所有绝对路径以当时的仓库位置 `E:\AI\DeepSeek Harness\Dsh` 为准；仓库已迁至 `E:\Code\dsh-plugin-market`，照抄下面的命令时请换成新路径。
 - 验收者：`market-verifier`（独立验收，未修改 `plugin-market/**`；`verify/origin-guard.test.mjs` 由 Lead 提供，属我的写入范围）
 - 契约依据：`docs/API-CONTRACT.md`（§5 断言清单 + §1/§2/§3 契约条款）、`docs/TEAM-BRIEF.md`
 - 本次验收的实现缺陷结论、8 条工具缺陷、全部原始证据见下文各节。

@@ -14,7 +14,11 @@
 ## 安装
 
 ```sh
-dsh plugin --profile web add "E:/AI/DeepSeek Harness/Dsh/plugin-market"
+# 已发布到 npm，直接按包名装（推荐）
+dsh plugin --profile web add deepseek-harness-market
+
+# 或从本地仓库目录装（开发用；仓库位于 E:\Code\dsh-plugin-market）
+dsh plugin --profile web add "E:/Code/dsh-plugin-market/plugin-market"
 ```
 
 Windows 上一键安装（含 profile 备份）与回滚：

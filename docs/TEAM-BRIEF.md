@@ -10,12 +10,12 @@
 截图里蓝色圈注的空白带，位于账号行 `epsilon-delta` 上方）。
 
 参考代码（只读，不要改）：
-- dsh-market 原版：`E:\AI\DeepSeek Harness\Dsh\_ref\dsh-market`
-- DeepSeek Harness 官方源码：`E:\AI\DeepSeek Harness\Dsh\_ref\deepseek-harness`
+- dsh-market 原版：`E:\Code\dsh-plugin-market\_ref\dsh-market`
+- DeepSeek Harness 官方源码：`E:\Code\dsh-plugin-market\_ref\deepseek-harness`
 - 一个已安装、可运行的第三方插件范例（host+client 双半、纯 JS）：
   `C:\Users\28062\.dsh\profiles\desktop\node_modules\@feiyang666\dsh-usage-plugin\`
   （`lib/index.js` = host，`lib/client.js` = client bundle，`cordis.patch.yml` = bundle 补丁层）
-- 目录数据源快照：`E:\AI\DeepSeek Harness\Dsh\_ref\data\plugins.json`（4412 条）
+- 目录数据源快照：`E:\Code\dsh-plugin-market\_ref\data\plugins.json`（4412 条）
 
 ## 2. 本机环境（已实测）
 
@@ -27,7 +27,7 @@
 | DSH_HOME | `C:\Users\28062\.dsh` |
 | 当前 profile | `desktop` → `C:\Users\28062\.dsh\profiles\desktop` |
 | 正在运行的 GUI | `http://127.0.0.1:19387`（**需要 token，不要直接 curl 首页**） |
-| 工作目录 | `E:\AI\DeepSeek Harness\Dsh` |
+| 工作目录 | `E:\Code\dsh-plugin-market`（2026-10-05 自 `E:\AI\DeepSeek Harness\Dsh` 迁入，按 E:\Code 下「目录名 = GitHub 仓库名」的惯例放置） |
 | 网络 | GitHub / npmjs / npmmirror 可访问；**awesome-dsh-plugin.com 直连 25–93s 或超时**（DSH 只认 `HTTP(S)_PROXY` 环境变量，不读 Windows 系统代理），所以目录源以 npm 镜像优先，见 `docs/API-CONTRACT.md` §3 |
 
 宿主读取插件的方式：profile `package.json` 的 `dsh.profile.bundles` 列出 bundle 名，

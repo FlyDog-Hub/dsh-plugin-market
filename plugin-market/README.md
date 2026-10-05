@@ -19,10 +19,13 @@ remove plugins without leaving the GUI.
 ## Install
 
 ```sh
-# local directory (development / personal use)
-dsh plugin --profile web add "E:\AI\DeepSeek Harness\Dsh\plugin-market"
+# from npm (recommended)
+dsh plugin --profile web add deepseek-harness-market
 
-# from the GitHub Release asset (substitute the current release's version; this package is not on npm)
+# local directory (development / personal use)
+dsh plugin --profile web add "E:\Code\dsh-plugin-market\plugin-market"
+
+# from the GitHub Release asset (substitute the current release's version)
 dsh plugin --profile web add https://github.com/Winnie-0721/dsh-plugin-market/releases/download/v1.1.1/deepseek-harness-market-1.1.1.tgz
 ```
 

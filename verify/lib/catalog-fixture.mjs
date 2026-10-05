@@ -16,14 +16,17 @@
 //   GET /__reset       → {"count": 0}
 import { createServer } from 'node:http'
 import { readFileSync, writeFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 
 const port = Number(process.argv[2] ?? 0)
 const usageRaw = process.argv[3] ?? '-'
 const usageVersion = usageRaw === '-' || usageRaw === '' ? null : usageRaw
 const portFile = process.argv[4]
 
+// 默认快照按本文件相对位置解析（verify/lib/ → 仓库根 → _ref/data/），
+// 不写绝对路径：仓库挪到别的盘/目录时这条默认值仍然成立。env 仍可覆盖。
 const SNAPSHOT = process.env.DSH_VERIFY_SNAPSHOT
-  ?? 'E:\\AI\\DeepSeek Harness\\Dsh\\_ref\\data\\plugins.json'
+  ?? fileURLToPath(new URL('../../_ref/data/plugins.json', import.meta.url))
 
 /** 只读快照 + 可选注入条目；注入项用于 updateAvailable 的双向断言。 */
 function buildCatalog() {

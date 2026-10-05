@@ -13,10 +13,13 @@
 ## 安装
 
 ```sh
-# 本地目录（开发/自用）
-dsh plugin --profile web add "E:\AI\DeepSeek Harness\Dsh\plugin-market"
+# 从 npm 装（推荐）
+dsh plugin --profile web add deepseek-harness-market
 
-# 从 GitHub Release 附件装（把版本号换成当前 Release 的；本包没有发到 npm）
+# 本地目录（开发/自用；仓库位于 E:\Code\dsh-plugin-market）
+dsh plugin --profile web add "E:\Code\dsh-plugin-market\plugin-market"
+
+# 从 GitHub Release 附件装（把版本号换成当前 Release 的）
 dsh plugin --profile web add https://github.com/Winnie-0721/dsh-plugin-market/releases/download/v1.1.1/deepseek-harness-market-1.1.1.tgz
 ```
 

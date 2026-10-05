@@ -155,6 +155,9 @@ DeepSeek Harness 的插件就是 Cordis 插件，Web GUI 的插件还必须额�
 
 ### 8.1 独立验收（临时 profile）
 
+> **路径说明**：本节与 `verify/REPORT.md` 是**当时**的运行记录，里面的绝对路径以当时仓库位置
+> `E:\AI\DeepSeek Harness\Dsh` 为准；仓库已迁到 `E:\Code\dsh-plugin-market`，历史记录里的旧路径不再有效。
+
 `verify/REPORT.md` 是完整记录：用 `DSH_HOME=E:\AI\DeepSeek Harness\Dsh\_verify\dshhome` 建独立
 profile，`dsh plugin --profile marketcheck add <本包>` 安装，起 4 个宿主实例，按契约逐条断言。
 最终一轮 `verify-20261003-214407`：**47 条断言 PASS=47 / FAIL=0**，覆盖：

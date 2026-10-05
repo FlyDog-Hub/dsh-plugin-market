@@ -26,6 +26,15 @@ dsh plugin --profile <profile> remove dsh-plugin-market   # 或 dsh-market
 dsh plugin --profile <profile> add <新包路径或 npm 名>
 ```
 
+**仓库位置迁移**：仓库整体从 `E:\AI\DeepSeek Harness\Dsh` 迁到 `E:\Code\dsh-plugin-market`
+（按 `E:\Code` 下「目录名 = GitHub 仓库名」的放置惯例），GitHub 仓库名与 npm 包名均不变。
+
+- README 的安装说明改为 **npm 优先**（`dsh plugin --profile web add deepseek-harness-market`），
+  本地目录示例改成新路径；顺带删掉「本包没有发到 npm」这句已过期的话
+- `verify/lib/catalog-fixture.mjs` 的默认快照路径改成按本文件相对位置解析，不再写死绝对路径
+- 文档中的绝对路径改到新位置；`verify/REPORT.md` 与 `docs/PLUGIN-MARKET.md` §8.1 的历史验收记录
+  **不改写**，只加一条路径后记（证据必须留在它当时的上下文里）
+
 ## 1.1.3
 
 修「顶部提示条显示不全」——提示条被压成一条、文字只剩半行（用户截图就是这样）。
