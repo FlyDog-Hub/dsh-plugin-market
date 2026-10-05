@@ -222,7 +222,7 @@ window.__ModuleLoader__.load({
         "meta.stars": "★ {count}",
         "meta.downloads": "↓ {count}",
         "action.checkUpdates": "检查更新",
-        "action.checkSelf": "市场更新检查",
+        "action.checkSelf": "插件市场更新",
         "action.checkingSelf": "检查中…",
         "action.recheckSelf": "重新检查",
         // 右边那颗的就绪态：不能和左边的「重新检查」同文案——两颗黑按钮写一样的字会分不清。
@@ -460,7 +460,7 @@ window.__ModuleLoader__.load({
         "meta.stars": "★ {count}",
         "meta.downloads": "↓ {count}",
         "action.checkUpdates": "Check for updates",
-        "action.checkSelf": "Market update check",
+        "action.checkSelf": "Plugin market update",
         "action.checkingSelf": "Checking…",
         "action.recheckSelf": "Check again",
         // Must differ from the left button's "Check again": two black buttons with the same
@@ -1090,7 +1090,7 @@ window.__ModuleLoader__.load({
    那两样是为了「收起时高度归 0」，留着反而会把很长的更新列表裁掉（列表高 > 1600px 时）。 */
 .dshpm-updatesPanel { display:flex; flex-direction:column; gap:10px; box-sizing:border-box; padding:12px 14px; border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.1)); border-radius:var(--dsw-radius-md,10px); background:var(--dsw-alias-bg-layer-1,transparent); }
 .dshpm-drawerHead { display:flex; align-items:flex-start; gap:8px; }
-/* 可更新页页头右侧的两个按钮（检查更新状态机 / 市场更新检查），窄屏下换行到标题下面。 */
+/* 可更新页页头右侧的两个按钮（检查更新状态机 / 插件市场更新），窄屏下换行到标题下面。 */
 .dshpm-updatesActions { flex:none; display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-left:auto; }
 .dshpm-drawerIcon { flex:none; display:inline-flex; margin-top:2px; color:var(--dsw-alias-brand-primary,#4d6bfe); }
 .dshpm-drawerHeading { flex:1 1 auto; min-width:0; }
@@ -1286,7 +1286,7 @@ window.__ModuleLoader__.load({
     // 1) 每次启动 DSH：client 模块随宿主 apply 一次 → 立刻检查一次**市场本体**更新；
     // 2) 启动后每 1 小时 → 检查一次**插件**更新（读 /installed，宿主已把目录 join 进来），
     //    结果同时喂给侧边栏角标与「可更新」页签。
-    // 状态放模块级：页面打开时直接是「已检查过」的样子，不必再点一次「市场更新检查」。
+    // 状态放模块级：页面打开时直接是「已检查过」的样子，不必再点一次「插件市场更新」。
     var PLUGIN_CHECK_INTERVAL_MS = 60 * 60 * 1000;
     var selfCheckState = { phase: "idle", data: null, error: null, at: 0 };
     var selfCheckListeners = [];
@@ -2058,7 +2058,7 @@ window.__ModuleLoader__.load({
     // 由「头部按钮就地展开的抽屉」搬成页签——用户圈的那个位置（已安装右边再开一个）。
     // 页头右侧两个按钮（用户指定）：左边是**合并后的单按钮状态机**——没检查过显示
     //「检查更新」，按下重读列表；检查过且有更新变成「一键更新（N）」，没有则变成
-    //「重新检查」（原页脚那颗独立按钮合并进来了）。右边管市场本体（市场更新检查）。
+    //「重新检查」（原页脚那颗独立按钮合并进来了）。右边管市场本体（插件市场更新）。
     // 两颗按钮样式统一（primary）；忙碌态与回执气泡沿用原来那套。
     // 逐个点仍然保留：一次只改一个依赖、失败不连坐，想稳就一条条来。
     function UpdatesPane(props) {
@@ -2161,7 +2161,7 @@ window.__ModuleLoader__.load({
             el("div", { className: "dshpm-drawerTitle" }, t("updates.title")),
             el("div", { className: "dshpm-drawerSubtitle" }, subtitle)),
           // 两个按钮（样式统一）：左边是合并后的状态机（检查更新 / 一键更新 / 重新检查），
-          // 右边管市场本体（市场更新检查，同一套「按下检查 → 有更新给更新、没更新给重新检查」）。
+          // 右边管市场本体（插件市场更新，同一套「按下检查 → 有更新给更新、没更新给重新检查」）。
           // 忙碌态与回执气泡就是从被删掉的那两个头部按钮上搬过来的。
           el("div", { className: "dshpm-updatesActions" },
             el("button", {
@@ -2765,7 +2765,7 @@ window.__ModuleLoader__.load({
       }
 
       /**
-       * 「市场更新检查」（已搬进「可更新」页）：走模块级状态机——启动时那次自动检查写的就是
+       * 「插件市场更新」（已搬进「可更新」页）：走模块级状态机——启动时那次自动检查写的就是
        * 它，所以页面一打开按钮已经是结果；再点一次才打 /self-update（宿主侧有 10 分钟缓存，
        * 连点不会打爆 CDN），结果进回执气泡。
        */
@@ -2820,7 +2820,7 @@ window.__ModuleLoader__.load({
 
       /**
        * 打开「可更新」页签：页签本身就是反馈（内容整页出现），同时重读一次已安装列表，
-       * **无论有没有更新都回一句话**——「市场更新检查」一直是这么做的，不能一个有反馈一个静默。
+       * **无论有没有更新都回一句话**——「插件市场更新」一直是这么做的，不能一个有反馈一个静默。
        * 头部的「更新插件」按钮已删除（页签与侧边栏角标取代了它），这是它原来的入口。
        */
       function goUpdates() {
@@ -2932,7 +2932,7 @@ window.__ModuleLoader__.load({
               : null),
           el("div", { className: "dshpm-headerActions" },
             // 「刷新目录」只在「发现」页签出现：已安装/可更新页没有目录列表，刷它没意义。
-            // 头部其余按钮早已搬走（更新插件→页签、市场更新检查→可更新页）。
+            // 头部其余按钮早已搬走（更新插件→页签、插件市场更新→可更新页）。
             tab === "discover" ? el("button", {
               type: "button",
               className: "dshpm-btn",

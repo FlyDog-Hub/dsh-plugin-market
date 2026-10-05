@@ -100,7 +100,7 @@ $env:HTTPS_PROXY='http://127.0.0.1:7890'; $env:HTTP_PROXY='http://127.0.0.1:7890
 dsh plugin --profile web add https://github.com/Winnie-0721/dsh-plugin-market/releases/download/v1.1.1/deepseek-harness-market-1.1.1.tgz
 ```
 
-装好第一次之后就不必再记这条命令：「可更新」页页头的「市场更新检查」会走 §4.4 的 CDN 通道自己完成升级。
+装好第一次之后就不必再记这条命令：「可更新」页页头的「插件市场更新」会走 §4.4 的 CDN 通道自己完成升级。
 
 `dsh plugin add` 的 spec 解析接受 `.tgz` URL（`parseInstallSpec` 的 tarball 形状），
 上面这条命令在全新 profile 上实测：**10.6 秒装完、bundle 已激活、`node_modules` 里有包**。
@@ -133,7 +133,7 @@ pnpm publish --access public --no-git-checks
 - 版本号不可重用、不可覆盖——发错了只能往上加；
 - 发布后立刻真装一次：`dsh plugin --profile <新 profile> add <name>` 或直接 `add <tarball URL>`，启动宿主确认侧边栏底部入口还在。
 
-### 4.4 自更新通道（「可更新」页页头那个「市场更新检查」按钮走的路）
+### 4.4 自更新通道（「可更新」页页头那个「插件市场更新」按钮走的路）
 
 三个源都会试，**按新鲜度排序**。全部数字是 2026-10-04 在本机实测（**不用代理**）：
 
@@ -205,7 +205,7 @@ pwsh -File verify/self-update-live.ps1   # 自更新端到端：真的下载 + �
 |---|---|---|
 | **客户端半**（`lib/client.js`） | 宿主按文件元数据算出新的产物 rev 并推给页面，**无需重启、通常也无需刷新** | 改完后线上 bundle 里能读到新代码（`mountStyles` / `style watchdog`），旧符号 `function installStyles` 已消失 |
 | **宿主半**（`lib/index.js` / `catalog*.js` / `http.js` / `self-update.js`） | 需要**重启 DSH 进程** | 加临时标记 → 用 patch 层 `disabled: true` 卸载再还原触发热重载 → 标记不出现、`/plugin-market/status` 的版本仍是旧值 |
-| **自更新装下的新版本** | 同样是**重启 DSH**：装完 `requiresRestart: true`，客户端不谎称已生效 | `apply` 返回 `application: restart-required` + `from/to`；按钮回到「市场更新检查」而不是「已更新」 |
+| **自更新装下的新版本** | 同样是**重启 DSH**：装完 `requiresRestart: true`，客户端不谎称已生效 | `apply` 返回 `application: restart-required` + `from/to`；按钮回到「插件市场更新」而不是「已更新」 |
 
 三个容易踩的点：
 

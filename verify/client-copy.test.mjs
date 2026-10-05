@@ -121,7 +121,7 @@ check('「检查更新」单按钮状态机：检查过才给一键更新/重新
   const pane = source.slice(source.indexOf('function UpdatesPane'), source.indexOf('function MarketPage'))
   assert.equal(pane.includes('dshpm-drawerFoot'), false, '页脚按钮已合并删除')
   // 两颗按钮风格统一（用户要求：旁边那颗也用 primary）
-  assert.match(pane, /className: "dshpm-btn dshpm-btn--primary" \+ \(self\.available/, '市场更新检查按钮与左按钮同为 primary')
+  assert.match(pane, /className: "dshpm-btn dshpm-btn--primary" \+ \(self\.available/, '插件市场更新按钮与左按钮同为 primary')
 })
 check('restart-required 计为成功：装好了待重启不是失败（用户报的「成功 0、失败 2」）', () => {
   assert.match(source, /function noticeFromResult/, '结果映射函数')
@@ -239,7 +239,7 @@ check('写操作只重读已安装列表：/status 挂载时读一次、目录�
   // 写操作函数仍只调 bumpTick（只重读已安装），不碰目录。
   assert.equal(/\[tick\]/.test(source), false, '不应再存在共享的 [tick] 依赖')
 })
-check('自更新按钮改名「市场更新检查」，状态文案：检查中/可更新/再查一次/更新中', () => {
+check('自更新按钮改名「插件市场更新」，状态文案：检查中/可更新/再查一次/更新中', () => {
   assert.match(source, /selfPhase === "checking" \? t\("action\.checkingSelf"\)/)
   assert.match(source, /selfPhase === "installing" \? t\("action\.updatingSelf"\)/)
   assert.match(source, /selfAvailable \? t\("action\.updateSelf"/)
@@ -247,7 +247,7 @@ check('自更新按钮改名「市场更新检查」，状态文案：检查中/
   // 两颗黑按钮写一样的字分不清（用户点名要文字区分）。
   assert.match(source, /selfPhase === "ready" \? t\("action\.recheckSelfOnly"\)/)
   assert.match(zhBlock, /"action\.recheckSelfOnly": "再查一次"/, '右键就绪态文案与左键「重新检查」不同')
-  assert.match(zhBlock, /"action\.checkSelf": "市场更新检查"/, '按钮已按用户要求改名')
+  assert.match(zhBlock, /"action\.checkSelf": "插件市场更新"/, '按钮已按用户要求改名')
   assert.equal(zhBlock.includes('"action.selfCurrent"'), false, '「已是最新」挨着插件更新只会误导')
 })
 check('入口与反馈：页签是入口，两个新按钮各带忙碌态 + 回执；自动检查规则齐全', () => {

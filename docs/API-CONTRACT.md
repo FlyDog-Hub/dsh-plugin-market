@@ -312,7 +312,7 @@ window.__ModuleLoader__.load({
     没检查过 →「检查更新」，按下重读列表（带回执）；检查过且有更新 →「一键更新（N）」（按顺序逐个执行
     同一条安装接口、每条结果留在该行、跑完给一条汇总回执，卡在「要先批准构建脚本」上就暂停）；
     检查过且没有更新 →「重新检查」。原页脚那颗独立的「重新检查」已合并进这颗按钮（`drawerFoot` 删除）。
-    右边是「市场更新检查」（原「检查市场更新」改名，状态机：市场更新检查 / 检查中… / 更新到 x.y.z /
+    右边是「插件市场更新」（原「检查市场更新」改名，状态机：插件市场更新 / 检查中… / 更新到 x.y.z /
     重新检查——检查完没有新版本时不再显示「已是最新」，避免与插件的更新状态混淆）。逐条的「更新到 x.y.z」仍然保留。
   - 「可更新」页的数据来自 `/installed` 的 `updateAvailable`/`latest`（宿主已把目录 join 进去），
     因此不依赖发现页的目录请求是否完成；点页签会重读一次并给一条结果回执。
@@ -375,6 +375,6 @@ window.__ModuleLoader__.load({
    - 端到端（`verify/self-update-live.ps1`）：临时把当前版本降到低于最新标签 → 真的下载 → 校验 →
      `pnpm add` 装进 scratch profile（依赖变为 `file:` 指向下载物）→ 结束时按字节还原本地 `package.json`。
 10. **同一路径的 GET 与 POST 必须只有一个路由登记项**：路由表以 path 为键，登记两次会互相覆盖，`GET /self-update` 会变成 405。改这里要重跑 §5 第 9 条的 GET 断言。
-11. **真实浏览器渲染**（`verify/ui-check.ps1` → `verify/market-ui.e2e.mjs`）：侧边栏入口可点开面板；头部只剩「刷新目录」一个按钮；页签栏是 `发现 / 已安装 / 可更新`，有 2 个可更新插件时页签角标显示 `2`；切到「可更新」页能看到两条记录，页头右侧初始是「检查更新」与「市场更新检查」（带 `data-state`，启动时的自动检查会把它推到 `checking`/`ready`）且**两颗都带 `--primary`**、页脚没有独立按钮（`drawerFoot` 为 0）；点「检查更新」后同一颗按钮变成「一键更新（2）」；每行仍有自己的「更新到 x.y.z」；点批量按钮时第一条返回 `restart-required`（**必须计为成功**并显示「重启 DSH 后生效」）、第二条由 CDP 注入 `EPERM` diagnostic 失败——汇总回执必须写「成功 1、失败 1」，失败行必须显示「文件被 DSH 占用」的专用短句，且批量进行中（按钮 `aria-busy`）页面里 `.dshpm-progress` 必须为 0（顶部黑条已删）；卡片/列表行的 `animation-name` 含 `dshpm-rise` 且 `animation-fill-mode` 是 `backwards`；切到 `prefers-reduced-motion: reduce` 后 `animation-name` 变 `none` 而列表行仍然可见（行数不变）。
-12. **文案与动效不变量**（`verify/client-copy.test.mjs`）：zh/en 键集完全一致；代码里用到的每个 `t("字面量键")` 都在两种语言里存在；没有僵尸文案键；被引用的 `@keyframes` 都有定义；没有任何升入动画用 `forwards`/`both`；顶部黑条进度条（`.dshpm-progress`）不存在；更新失败的 `EPERM`/拒绝访问必须被 `fileLockedDetail` 识别并切到 `err.file-locked.*`（三处接入：错误气泡、可更新行内、已安装行错误）；回执文案保持精简形态（`已刷新 {count} 个插件` 等）；「检查更新」合并状态机存在（`checkPhase`/`onCheckUpdates`/页脚 `drawerFoot` 已删、市场更新检查按钮同为 primary）；`restart-required` 带 `applied: true` 且行内/批量按 `applied` 计成功（`已是最新` 与裸 `一键更新` 两个键已删除）。
+11. **真实浏览器渲染**（`verify/ui-check.ps1` → `verify/market-ui.e2e.mjs`）：侧边栏入口可点开面板；头部只剩「刷新目录」一个按钮；页签栏是 `发现 / 已安装 / 可更新`，有 2 个可更新插件时页签角标显示 `2`；切到「可更新」页能看到两条记录，页头右侧初始是「检查更新」与「插件市场更新」（带 `data-state`，启动时的自动检查会把它推到 `checking`/`ready`）且**两颗都带 `--primary`**、页脚没有独立按钮（`drawerFoot` 为 0）；点「检查更新」后同一颗按钮变成「一键更新（2）」；每行仍有自己的「更新到 x.y.z」；点批量按钮时第一条返回 `restart-required`（**必须计为成功**并显示「重启 DSH 后生效」）、第二条由 CDP 注入 `EPERM` diagnostic 失败——汇总回执必须写「成功 1、失败 1」，失败行必须显示「文件被 DSH 占用」的专用短句，且批量进行中（按钮 `aria-busy`）页面里 `.dshpm-progress` 必须为 0（顶部黑条已删）；卡片/列表行的 `animation-name` 含 `dshpm-rise` 且 `animation-fill-mode` 是 `backwards`；切到 `prefers-reduced-motion: reduce` 后 `animation-name` 变 `none` 而列表行仍然可见（行数不变）。
+12. **文案与动效不变量**（`verify/client-copy.test.mjs`）：zh/en 键集完全一致；代码里用到的每个 `t("字面量键")` 都在两种语言里存在；没有僵尸文案键；被引用的 `@keyframes` 都有定义；没有任何升入动画用 `forwards`/`both`；顶部黑条进度条（`.dshpm-progress`）不存在；更新失败的 `EPERM`/拒绝访问必须被 `fileLockedDetail` 识别并切到 `err.file-locked.*`（三处接入：错误气泡、可更新行内、已安装行错误）；回执文案保持精简形态（`已刷新 {count} 个插件` 等）；「检查更新」合并状态机存在（`checkPhase`/`onCheckUpdates`/页脚 `drawerFoot` 已删、插件市场更新按钮同为 primary）；`restart-required` 带 `applied: true` 且行内/批量按 `applied` 计成功（`已是最新` 与裸 `一键更新` 两个键已删除）。
 13. **安装 spec 钉版本**（`verify/install-spec.test.mjs`）：`pinnedNpmSpec` 在装之前被调用、只认「spec === 目录里的裸 npm 名 + 版本像 semver」、钉出 `name@version`；行为上，`POST /install {name}` 与 `{spec:裸名}` 都让假 `installBundle` 收到 `dsh-context@0.63.0`，GitHub 条目的 spec 保持 URL 原样。

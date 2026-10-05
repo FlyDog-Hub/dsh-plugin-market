@@ -4,7 +4,7 @@
  * 假 DOM 桩能证明代码不抛异常，证明不了这几件事——所以这里全部在真引擎里测：
  *  1. 侧边栏入口能点开市场面板，页面真的渲染出样式（不是"有功能无样式"）；
  *  2. 头部只剩「刷新目录」；第三个页签「可更新」带计数角标，页头右侧是合并状态机
- *     「检查更新 → 一键更新（N）/ 重新检查」与改名后的「市场更新检查」（两颗样式统一）；
+ *     「检查更新 → 一键更新（N）/ 重新检查」与改名后的「插件市场更新」（两颗样式统一）；
  *  3. 切到「可更新」页能看到两条待更新记录、逐条「更新到 x.y.z」，先点「检查更新」再点
  *     「一键更新」给出汇总回执；第一条返回 restart-required 必须计为**成功**（用户报的「成功 0、失败 2」）；
  *  4. 动效真的生效（计算样式里有 animation-name / transition）；
@@ -328,11 +328,11 @@ try {
   )
 
   // 页头右侧的两个按钮（用户第三轮指定）：左边是合并状态机「检查更新 → 一键更新（N）/ 重新检查」，
-  // 右边是改名后的「市场更新检查」；两颗风格统一（都是 primary），页脚的旧「重新检查」已合并删除。
+  // 右边是改名后的「插件市场更新」；两颗风格统一（都是 primary），页脚的旧「重新检查」已合并删除。
   const paneButtons = await evaluate(client, `Array.from(document.querySelectorAll('.dshpm-updatesActions button')).map(b => b.textContent.trim())`)
   expect(
-    '页头右侧初始是「检查更新」与「市场更新检查（四态之一）」两个按钮',
-    Array.isArray(paneButtons) && paneButtons.length === 2 && /^检查更新/.test(paneButtons[0] || '') && /市场更新检查|检查中|更新到|重新检查|Check|Checking|Update to|Check again/.test(paneButtons[1] || ''),
+    '页头右侧初始是「检查更新」与「插件市场更新（四态之一）」两个按钮',
+    Array.isArray(paneButtons) && paneButtons.length === 2 && /^检查更新/.test(paneButtons[0] || '') && /插件市场更新|检查中|更新到|再查一次|Plugin market|Checking|Update to|Check market/.test(paneButtons[1] || ''),
     JSON.stringify(paneButtons),
   )
   const panePrimary = await evaluate(
@@ -364,7 +364,7 @@ try {
     `逐条=${JSON.stringify(perItemButtons)}`,
   )
   const selfState = await evaluate(client, `(() => { const b = document.querySelectorAll('.dshpm-updatesActions button')[1]; return b ? { state: b.getAttribute('data-state'), busy: b.getAttribute('aria-busy') } : null; })()`)
-  expect('「市场更新检查」按钮带状态机标记（启动时的自动检查已写过一次）', !!selfState && ['idle', 'checking', 'ready', 'error'].includes(selfState?.state), JSON.stringify(selfState))
+  expect('「插件市场更新」按钮带状态机标记（启动时的自动检查已写过一次）', !!selfState && ['idle', 'checking', 'ready', 'error'].includes(selfState?.state), JSON.stringify(selfState))
 
   // 点「一键更新」：顺序逐个跑，第一条 restart-required（必须计成功）、第二条注入 EPERM 占用失败
   // → 汇总必须如实写「成功 1、失败 1」。

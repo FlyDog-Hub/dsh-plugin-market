@@ -147,7 +147,7 @@ dsh plugin --profile <profile> add <新包路径或 npm 名>
    行内结果与批量汇总都按 `applied` 计数。截图里的「成功 0、失败 2」从此变成「成功 2、失败 0」。
 4. **按钮状态机**（用户指定）：页头合并成一颗「检查更新」——没检查过显示「检查更新」，按下重读列表，
    检查过且有更新变成「一键更新（N）」，没有更新变成「重新检查」；页脚那颗独立的「重新检查」
-   合并删除（`drawerFoot` 不复存在）。旁边那颗改名「市场更新检查」（「已是最新」三个字挨着插件的
+   合并删除（`drawerFoot` 不复存在）。旁边那颗改名「插件市场更新」（「已是最新」三个字挨着插件的
    「一键更新」只会误导），逻辑同型（检查 → 有更新给更新、没更新给重新检查），两颗按钮风格统一
    （都带 `primary`）。文案键：+`action.checkUpdates`，−`action.selfCurrent`、−`action.updateAll`。
 5. **验收**：`client-copy.test.mjs` **21/21**（新增：状态机与 `applied` 两组断言）；
@@ -192,6 +192,10 @@ dsh plugin --profile <profile> add <新包路径或 npm 名>
    `tab === "discover"` 条件渲染）；`market-ui.e2e.mjs` **47/47**（新增 2 条守卫：
    切到已安装页后头部按钮数为 0、可更新页两颗按钮文案不同）；
    `release.ps1 -LocalOnly -Bump none` 全绿。
+4. **右键文案再改一次**：用户随后指定改成「插件市场更新」（原「市场更新检查」）。
+   `action.checkSelf`：zh「插件市场更新」/ en「Plugin market update」，并同步 21 处
+   代码注释与文档引用（`README.zh.md`、`RELEASING.md`、`PLUGIN-MARKET.md`、
+   `API-CONTRACT.md`、`CHANGELOG.md`）。
 
 ## 1.1.3
 
