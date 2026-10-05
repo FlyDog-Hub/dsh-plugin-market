@@ -225,6 +225,8 @@ window.__ModuleLoader__.load({
         "action.checkSelf": "市场更新检查",
         "action.checkingSelf": "检查中…",
         "action.recheckSelf": "重新检查",
+        // 右边那颗的就绪态：不能和左边的「重新检查」同文案——两颗黑按钮写一样的字会分不清。
+        "action.recheckSelfOnly": "再查一次",
         "action.updateSelf": "更新到 {version}",
         "action.updatingSelf": "正在更新市场…",
         "action.updateAllCount": "一键更新（{count}）",
@@ -461,6 +463,9 @@ window.__ModuleLoader__.load({
         "action.checkSelf": "Market update check",
         "action.checkingSelf": "Checking…",
         "action.recheckSelf": "Check again",
+        // Must differ from the left button's "Check again": two black buttons with the same
+        // label are indistinguishable.
+        "action.recheckSelfOnly": "Check market again",
         "action.updateSelf": "Update to {version}",
         "action.updatingSelf": "Updating the market…",
         "action.updateAllCount": "Update all ({count})",
@@ -2898,9 +2903,9 @@ window.__ModuleLoader__.load({
       var selfLabel = selfPhase === "checking" ? t("action.checkingSelf")
         : selfPhase === "installing" ? t("action.updatingSelf")
           : selfAvailable ? t("action.updateSelf", { version: selfInfo.latest })
-            // 就绪且没有新版本 →「重新检查」（与左边「检查更新」同一套逻辑；
-            //「已是最新」三个字挨着插件的「一键更新」只会让人以为插件也最新了）。
-            : selfPhase === "ready" ? t("action.recheckSelf")
+            // 就绪且没有新版本 →「再查一次」（左边的「重新检查」是插件的，这颗是市场的，
+            // 两颗黑按钮写一样的字会分不清）。
+            : selfPhase === "ready" ? t("action.recheckSelfOnly")
               : t("action.checkSelf");
       var selfTitle = selfAvailable
         ? t("self.available", { version: selfInfo.latest })
@@ -2926,16 +2931,17 @@ window.__ModuleLoader__.load({
               ? el("div", { className: "dshpm-selfNote" }, el(IconInfo, { size: 12 }), el("span", null, t("self.linkNote")))
               : null),
           el("div", { className: "dshpm-headerActions" },
-            // 头部只留「刷新目录」：「更新插件」被第三个页签取代、「市场更新检查」搬进了可更新页，
-            // 连同它们的反馈（忙碌态 + 回执气泡）一起搬过去——见 UpdatesPane 的 dshpm-updatesActions。
-            el("button", {
+            // 「刷新目录」只在「发现」页签出现：已安装/可更新页没有目录列表，刷它没意义。
+            // 头部其余按钮早已搬走（更新插件→页签、市场更新检查→可更新页）。
+            tab === "discover" ? el("button", {
               type: "button",
               className: "dshpm-btn",
               disabled: refreshing,
               "aria-busy": refreshing ? "true" : "false",
               onClick: refreshCatalog
             }, refreshing ? el(IconSpinner, { size: 12 }) : el(IconRefresh, { size: 12 }),
-              refreshing ? t("action.refreshing") : t("action.refresh")))
+              refreshing ? t("action.refreshing") : t("action.refresh")) : null
+          )
         ),
         notice
           ? el(NoticeBar, {

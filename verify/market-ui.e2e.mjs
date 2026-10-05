@@ -287,6 +287,16 @@ try {
   expect('已安装列表行也有入场动画且填充模式为 backwards', rowAnim?.anim?.includes('dshpm-rise') && rowAnim?.fill === 'backwards', JSON.stringify(rowAnim))
   const marketBadge = await evaluate(client, `!!document.querySelector('.dshpm-badge') && document.body.innerText.includes('市场自身') || document.body.innerText.includes('@fixture/needs-update')`)
   expect('已安装页显示注入的三个 bundle', marketBadge === true)
+  // 用户要求：「刷新目录」只在「发现」页签出现——已安装页没有目录列表，刷它没意义。
+  const installedHeader = await evaluate(
+    client,
+    `Array.from(document.querySelectorAll('.dshpm-headerActions button')).map(b => b.textContent.trim())`,
+  )
+  expect(
+    '切到「已安装」后头部的「刷新目录」已隐藏（只在发现页出现）',
+    Array.isArray(installedHeader) && installedHeader.length === 0,
+    `实际：${JSON.stringify(installedHeader)}`,
+  )
 
   console.log('\n[4] 打开「可更新」页签（检查更新状态机 + 逐个确认 + 一键更新）')
   // 用户报的「点更新插件没有任何反馈」：先把上一条提示条等没（自动收起 4.6s + 200ms 退场），
@@ -330,6 +340,16 @@ try {
     `Array.from(document.querySelectorAll('.dshpm-updatesActions button')).map(b => b.className.includes('dshpm-btn--primary'))`,
   )
   expect('两颗按钮风格统一（都带 primary）', Array.isArray(panePrimary) && panePrimary.length === 2 && panePrimary.every(Boolean), JSON.stringify(panePrimary))
+  // 用户要求：两颗黑按钮文字必须区分——右键就绪态曾复用左键的「重新检查」，撞车。
+  const distinctLabels = await evaluate(
+    client,
+    `(() => { const b = Array.from(document.querySelectorAll('.dshpm-updatesActions button')); return { left: (b[0]?.textContent || '').trim(), right: (b[1]?.textContent || '').trim() }; })()`,
+  )
+  expect(
+    '两颗黑按钮文字不同（右键就绪态是「再查一次」，不是左键的「重新检查」）',
+    !!distinctLabels?.left && !!distinctLabels?.right && distinctLabels.left !== distinctLabels.right,
+    JSON.stringify(distinctLabels),
+  )
   const footCount = await evaluate(client, `document.querySelectorAll('.dshpm-updatesPanel .dshpm-drawerFoot').length`)
   expect('页脚那颗独立的「重新检查」已合并进按钮（drawerFoot 不复存在）', Number(footCount) === 0, `drawerFoot ${footCount}`)
 

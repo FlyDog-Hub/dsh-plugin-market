@@ -208,6 +208,9 @@ check('头部只留「刷新目录」，两个更新类按钮搬进可更新页�
   // 被删掉的是头部的「更新插件」与「检查市场更新」：前者被第三个页签取代，后者搬进可更新页。
   assert.equal(source.includes('dshpm-btn--updates'), false, '头部的「更新插件」按钮应已删除')
   assert.match(source, /refreshing \? t\("action\.refreshing"\) : t\("action\.refresh"\)/, '「刷新目录」必须还在头部')
+  // 用户要求：刷新目录只在「发现」页签出现——已安装/可更新页没有目录列表。
+  assert.match(source, /tab === "discover" \? el\("button"/, '刷新目录按钮要按 tab 条件渲染')
+  assert.match(source, /刷新目录.*只在「发现」页签出现|只在「发现」页签出现/, '要有注释说明为何只在发现页')
   assert.equal(source.includes('t("action.updates")'), false, 'action.updates 文案随按钮一起删除（否则就是僵尸文案）')
   const actionsAt = source.indexOf('className: "dshpm-updatesActions"')
   assert.ok(actionsAt > 0, '可更新页页头要有按钮区')
@@ -236,12 +239,14 @@ check('写操作只重读已安装列表：/status 挂载时读一次、目录�
   // 写操作函数仍只调 bumpTick（只重读已安装），不碰目录。
   assert.equal(/\[tick\]/.test(source), false, '不应再存在共享的 [tick] 依赖')
 })
-check('自更新按钮改名「市场更新检查」，状态文案：检查中/可更新/重新检查/更新中', () => {
+check('自更新按钮改名「市场更新检查」，状态文案：检查中/可更新/再查一次/更新中', () => {
   assert.match(source, /selfPhase === "checking" \? t\("action\.checkingSelf"\)/)
   assert.match(source, /selfPhase === "installing" \? t\("action\.updatingSelf"\)/)
   assert.match(source, /selfAvailable \? t\("action\.updateSelf"/)
-  // 检查完没有新版本 →「重新检查」（与左边「检查更新」同一套逻辑，不再写「已是最新」）。
-  assert.match(source, /selfPhase === "ready" \? t\("action\.recheckSelf"\)/)
+  // 检查完没有新版本 →「再查一次」：左边那颗是插件的「重新检查」，右边这颗是市场的，
+  // 两颗黑按钮写一样的字分不清（用户点名要文字区分）。
+  assert.match(source, /selfPhase === "ready" \? t\("action\.recheckSelfOnly"\)/)
+  assert.match(zhBlock, /"action\.recheckSelfOnly": "再查一次"/, '右键就绪态文案与左键「重新检查」不同')
   assert.match(zhBlock, /"action\.checkSelf": "市场更新检查"/, '按钮已按用户要求改名')
   assert.equal(zhBlock.includes('"action.selfCurrent"'), false, '「已是最新」挨着插件更新只会误导')
 })

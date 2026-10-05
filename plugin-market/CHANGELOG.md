@@ -180,6 +180,19 @@ dsh plugin --profile <profile> add <新包路径或 npm 名>
    目录 effect 依赖 `catalogTick`、不存在共享 `[tick]`）；`market-ui.e2e.mjs` **45/45**；
    `release.ps1 -LocalOnly -Bump none` 全绿。
 
+**界面微调**（用户截图反馈「俩个黑色按钮区分一下 还有刷新目录只用在发现界面有就行」）：
+
+1. **两颗黑按钮文字撞车 → 分开**。右键（市场本体）`ready` 态原先复用左键的
+   `action.recheckSelf`（「重新检查」），两颗挨着显示一样的字，分不清谁是谁。新增
+   `action.recheckSelfOnly`（zh「再查一次」/ en「Check market again」）只给右键用：
+   左键管**插件**的「重新检查」，右键管**市场本体**的「再查一次」。
+2. **「刷新目录」只在「发现」页签出现**：已安装/可更新页没有目录列表，刷新没有意义。
+   header 里改成 `tab === "discover" ? 按钮 : null`。
+3. **验收**：`client-copy.test.mjs` **22/22**（断言改为锁 `recheckSelfOnly` 与
+   `tab === "discover"` 条件渲染）；`market-ui.e2e.mjs` **47/47**（新增 2 条守卫：
+   切到已安装页后头部按钮数为 0、可更新页两颗按钮文案不同）；
+   `release.ps1 -LocalOnly -Bump none` 全绿。
+
 ## 1.1.3
 
 修「顶部提示条显示不全」——提示条被压成一条、文字只剩半行（用户截图就是这样）。
