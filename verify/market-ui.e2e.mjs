@@ -3,8 +3,10 @@
  *
  * 假 DOM 桩能证明代码不抛异常，证明不了这几件事——所以这里全部在真引擎里测：
  *  1. 侧边栏入口能点开市场面板，页面真的渲染出样式（不是"有功能无样式"）；
- *  2. 头部只剩「刷新目录」；第三个页签「可更新」带计数角标，页头右侧有「一键更新」与「检查市场更新」；
- *  3. 切到「可更新」页能看到两条待更新记录、逐条「更新到 x.y.z」，点批量按钮会给出汇总回执；
+ *  2. 头部只剩「刷新目录」；第三个页签「可更新」带计数角标，页头右侧是合并状态机
+ *     「检查更新 → 一键更新（N）/ 重新检查」与改名后的「市场更新检查」（两颗样式统一）；
+ *  3. 切到「可更新」页能看到两条待更新记录、逐条「更新到 x.y.z」，先点「检查更新」再点
+ *     「一键更新」给出汇总回执；第一条返回 restart-required 必须计为**成功**（用户报的「成功 0、失败 2」）；
  *  4. 动效真的生效（计算样式里有 animation-name / transition）；
  *  5. prefers-reduced-motion: reduce 下动效被关掉，而内容仍然可见（不能变成空白）。
  *
@@ -83,8 +85,9 @@ try {
   // 否则"动效生效"这一组断言测的是一条永远关着动画的路径，而 [6] 又会因为同样原因平凡通过。
   await client.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'no-preference' }] })
 
-  // 拦截 /installed 与 /install：前者给确定性数据；后者第一条（needs-update）给成功但拖 700ms，
-  // 第二条（second-update）注入 EPERM 占用失败——批量的「顺序执行 + 汇总 + 占用回执」三种反馈都由它验。
+  // 拦截 /installed 与 /install：前者给确定性数据；后者第一条（needs-update）返回
+  // restart-required（装好了待重启——界面必须计为成功）并拖 700ms，第二条（second-update）
+  // 注入 EPERM 占用失败——批量的「顺序执行 + 汇总 + 占用回执」与 restart-required 计数都由它验。
   // fixture 插件在真实宿主里必然 400 not-in-catalog——那会造出两条控制台错误，
   // 而这条路径要测的是**批量流程本身**，不是宿主的目录校验。
   await client.send('Fetch.enable', {
@@ -110,7 +113,7 @@ try {
           },
         }
       } else {
-        payload = { ok: true, application: 'applied' }
+        payload = { ok: true, application: 'restart-required', changed: true }
         delay = 700 // 拖出一个「写操作进行中」窗口：断言顶部没有黑条进度条
       }
     }
@@ -285,7 +288,7 @@ try {
   const marketBadge = await evaluate(client, `!!document.querySelector('.dshpm-badge') && document.body.innerText.includes('市场自身') || document.body.innerText.includes('@fixture/needs-update')`)
   expect('已安装页显示注入的三个 bundle', marketBadge === true)
 
-  console.log('\n[4] 打开「可更新」页签（逐个确认 + 一键更新）')
+  console.log('\n[4] 打开「可更新」页签（检查更新状态机 + 逐个确认 + 一键更新）')
   // 用户报的「点更新插件没有任何反馈」：先把上一条提示条等没（自动收起 4.6s + 200ms 退场），
   // 这样点击后新出现的那条就必然是**本次**的回执，而不是上一次的残留。
   await waitFor(client, `document.querySelector('.dshpm-notice') === null`, 12000, '上一条提示条已自动收起')
@@ -314,22 +317,37 @@ try {
     JSON.stringify(perItemButtons),
   )
 
-  // 页头右侧的两个新按钮（用户要求放这里，反馈逻辑也从被删的头部按钮迁过来）。
+  // 页头右侧的两个按钮（用户第三轮指定）：左边是合并状态机「检查更新 → 一键更新（N）/ 重新检查」，
+  // 右边是改名后的「市场更新检查」；两颗风格统一（都是 primary），页脚的旧「重新检查」已合并删除。
   const paneButtons = await evaluate(client, `Array.from(document.querySelectorAll('.dshpm-updatesActions button')).map(b => b.textContent.trim())`)
   expect(
-    '页头右侧有「一键更新（2）」与「检查市场更新（四态之一）」两个按钮',
-    Array.isArray(paneButtons) && paneButtons.length === 2 && /一键更新/.test(paneButtons[0] || '') && /检查市场更新|检查中|已是最新|更新到|Check|Checking|Up to date/.test(paneButtons[1] || ''),
+    '页头右侧初始是「检查更新」与「市场更新检查（四态之一）」两个按钮',
+    Array.isArray(paneButtons) && paneButtons.length === 2 && /^检查更新/.test(paneButtons[0] || '') && /市场更新检查|检查中|更新到|重新检查|Check|Checking|Update to|Check again/.test(paneButtons[1] || ''),
     JSON.stringify(paneButtons),
   )
+  const panePrimary = await evaluate(
+    client,
+    `Array.from(document.querySelectorAll('.dshpm-updatesActions button')).map(b => b.className.includes('dshpm-btn--primary'))`,
+  )
+  expect('两颗按钮风格统一（都带 primary）', Array.isArray(panePrimary) && panePrimary.length === 2 && panePrimary.every(Boolean), JSON.stringify(panePrimary))
+  const footCount = await evaluate(client, `document.querySelectorAll('.dshpm-updatesPanel .dshpm-drawerFoot').length`)
+  expect('页脚那颗独立的「重新检查」已合并进按钮（drawerFoot 不复存在）', Number(footCount) === 0, `drawerFoot ${footCount}`)
+
+  // 状态机走一遍：点「检查更新」→ 重读列表 → 检查过且有更新 → 同一颗按钮变成「一键更新（2）」。
+  await evaluate(client, `(() => { const b = Array.from(document.querySelectorAll('.dshpm-updatesActions button')).find(x => /检查更新/.test(x.textContent)); if (b) b.click(); return true; })()`)
+  await waitFor(client, `(() => { const b = document.querySelectorAll('.dshpm-updatesActions button')[0]; return !!b && /一键更新（2）/.test(b.textContent); })()`, 10000, '检查后按钮变成「一键更新（2）」')
+  const checkedButtons = await evaluate(client, `Array.from(document.querySelectorAll('.dshpm-updatesActions button')).map(b => b.textContent.trim())`)
+  expect('「检查更新」按下后发现 2 个更新 → 同一颗按钮显示「一键更新（2）」', /一键更新（2）/.test(String(checkedButtons?.[0])), JSON.stringify(checkedButtons))
   expect(
-    '新增了批量入口「一键更新」，同时逐条确认没有被取消',
-    /一键更新/.test(String(panelText)) && Array.isArray(perItemButtons) && perItemButtons.length === 2,
-    `批量=${/一键更新/.test(String(panelText))} 逐条=${JSON.stringify(perItemButtons)}`,
+    '批量入口「一键更新」就位，同时逐条确认没有被取消',
+    Array.isArray(perItemButtons) && perItemButtons.length === 2 && perItemButtons.every((label) => label.includes('更新到')),
+    `逐条=${JSON.stringify(perItemButtons)}`,
   )
   const selfState = await evaluate(client, `(() => { const b = document.querySelectorAll('.dshpm-updatesActions button')[1]; return b ? { state: b.getAttribute('data-state'), busy: b.getAttribute('aria-busy') } : null; })()`)
-  expect('「检查市场更新」按钮带状态机标记（启动时的自动检查已写过一次）', !!selfState && ['idle', 'checking', 'ready', 'error'].includes(selfState?.state), JSON.stringify(selfState))
+  expect('「市场更新检查」按钮带状态机标记（启动时的自动检查已写过一次）', !!selfState && ['idle', 'checking', 'ready', 'error'].includes(selfState?.state), JSON.stringify(selfState))
 
-  // 点「一键更新」：顺序逐个跑，第一条成功、第二条被注入 EPERM 占用失败 → 汇总必须如实写「成功 1、失败 1」。
+  // 点「一键更新」：顺序逐个跑，第一条 restart-required（必须计成功）、第二条注入 EPERM 占用失败
+  // → 汇总必须如实写「成功 1、失败 1」。
   await evaluate(client, `(() => { const b = Array.from(document.querySelectorAll('.dshpm-updatesActions button')).find(x => /一键更新/.test(x.textContent)); if (b) b.click(); return true; })()`)
   // 第一条响应被拖了 700ms：这个窗口里批量按钮是 aria-busy，而顶部**没有**黑条进度条（已删）。
   await waitFor(client, `document.querySelector('.dshpm-updatesActions button[aria-busy="true"]') !== null`, 8000, '批量进行中（按钮 aria-busy）')
@@ -342,8 +360,8 @@ try {
     `Array.from(document.querySelectorAll('.dshpm-updateRow .dshpm-updateResult')).map(el => ({ ok: el.getAttribute('data-ok'), text: el.innerText.trim() }))`,
   )
   expect(
-    '第二条失败行显示「文件被占用」的可操作短句（不是宿主的通用句）',
-    Array.isArray(rowResults) && rowResults.length === 2 && rowResults[0]?.ok === 'true' && rowResults[1]?.ok === 'false' && /占用/.test(String(rowResults[1]?.text)),
+    '第一条 restart-required 计为成功（显示重启提示，不是失败）；第二条失败行显示「文件被占用」短句',
+    Array.isArray(rowResults) && rowResults.length === 2 && rowResults[0]?.ok === 'true' && /重启 DSH 后生效/.test(String(rowResults[0]?.text)) && rowResults[1]?.ok === 'false' && /占用/.test(String(rowResults[1]?.text)),
     JSON.stringify(rowResults),
   )
 

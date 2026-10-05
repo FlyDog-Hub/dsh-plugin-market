@@ -298,6 +298,26 @@ function findCatalogItem(items, name) {
   )
 }
 
+const SEMVER_LIKE = /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/
+
+/**
+ * 把「裸 npm 名」钉成 name@version（目录给了明确版本时）。
+ *
+ * pnpm 11 对已存在的依赖执行 `pnpm add <裸名>` 是幂等的：打印 Already up to date，
+ * package.json 一个字节都不动——目录显示「更新到 0.63.0」，安装却永远停在 0.62.3，
+ * 宿主随后还按「本来就装着」回一个 restart-required，界面上就成了
+ * 「点更新 → 已安装，重启后生效 → 可更新角标却一直是 2」的死循环。
+ * 所以更新必须带版本。spec 不是裸 npm 名（URL 仓库地址、已带版本的写法）
+ * 或版本字段不像 semver 时，原样放行给宿主。
+ */
+function pinnedNpmSpec(hit, spec) {
+  const npm = optionalText(hit?.npm)
+  const versionRaw = optionalText(hit?.version)
+  if (npm === null || versionRaw === null || spec !== npm) return spec
+  const version = versionRaw.replace(/^v/, '')
+  return SEMVER_LIKE.test(version) ? `${npm}@${version}` : spec
+}
+
 function invalidQuery(res, picked) {
   sendError(res, 400, 'bad-request', { message: picked.message, hint: picked.hint })
 }
@@ -478,9 +498,10 @@ function createHandlers(ctx, catalog, selfUpdate) {
       const items = cache.plugins
 
       let spec = requestedSpec
+      let hit
       if (spec !== null) {
         // 安全约束：显式 spec 也必须落在目录里，不能变成任意包安装器。
-        const hit = items.find(
+        hit = items.find(
           (item) => sameKey(item.spec, spec) || sameKey(item.npm, spec) || sameKey(item.url, spec)
         )
         if (hit === undefined) {
@@ -489,7 +510,7 @@ function createHandlers(ctx, catalog, selfUpdate) {
         }
         spec = hit.spec ?? spec
       } else {
-        const hit = findCatalogItem(items, requestedName)
+        hit = findCatalogItem(items, requestedName)
         if (hit === undefined) {
           sendError(res, 400, 'not-in-catalog', {
             message: '目录里没有这个插件，已拒绝安装。',
@@ -506,6 +527,7 @@ function createHandlers(ctx, catalog, selfUpdate) {
         }
         spec = hit.spec
       }
+      spec = pinnedNpmSpec(hit, spec)
 
       const options = {}
       const requestId = optionalText(payload.requestId)

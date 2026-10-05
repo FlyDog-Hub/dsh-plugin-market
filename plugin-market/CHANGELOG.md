@@ -128,6 +128,35 @@ dsh plugin --profile <profile> add <新包路径或 npm 名>
    黑条删除断言）；`market-ui.e2e.mjs` **42/42**（新增：写操作中无 `.dshpm-progress`、
    EPERM 失败行回执、汇总 1/1；截图前顺手关掉 scratch profile 的 API Key 引导弹窗）。
 
+**第三轮**（修「点更新真的不会更新」+ 按钮状态机）：
+
+1. **根因：更新从来就没换过版本**（宿主行为 + pnpm 语义拼出来的死循环）：
+   - 目录条目的 `spec` 是**裸 npm 名**（`dsh-context`）；pnpm 11 对「已存在的依赖 + 裸名」执行
+     `pnpm add` 是幂等的——打印 `Already up to date`、`package.json` 一个字节不动。用 DSH 自带的
+     pnpm 11.7.0 在 scratch 目录复现：裸名 no-op，`dsh-context@0.63.0` 才真的 `-0.62.3 +0.63.0`。
+   - 宿主 `installBundle` 在依赖名没变时仍按「本来就装着」回 `application: restart-required`，
+     于是界面显示「已安装，重启后生效」而可更新角标一直是 2——点多少次都没用。
+   - 实证：用户 profile 的 `package.json` 仍是 `dsh-context: ^0.62.3`，16:39–16:40 的十几次
+     pnpm 操作日志全都是 `Already up to date`。
+2. **修复一（宿主半）**：新增 `pinnedNpmSpec`——命中目录条目里的裸 npm 名在传给 `installBundle`
+   前钉成 `name@version`（版本字段像 semver 才钉；GitHub 类 URL、已带版本的 spec 原样放行），
+   `POST /install` 的两条入口（按 name、按显式 spec）都走它。新增 `verify/install-spec.test.mjs`
+   （源码不变量 + 本地目录 fixture + 假 `pluginManager` 的行为断言）。
+3. **修复二（客户端半）**：`noticeFromResult` 给每个分支标 `applied`——`restart-required` /
+   `overridden` 是「装好了」（warn 气泡照旧提示重启，但计成功），`cancelled` / 无变更不算成功；
+   行内结果与批量汇总都按 `applied` 计数。截图里的「成功 0、失败 2」从此变成「成功 2、失败 0」。
+4. **按钮状态机**（用户指定）：页头合并成一颗「检查更新」——没检查过显示「检查更新」，按下重读列表，
+   检查过且有更新变成「一键更新（N）」，没有更新变成「重新检查」；页脚那颗独立的「重新检查」
+   合并删除（`drawerFoot` 不复存在）。旁边那颗改名「市场更新检查」（「已是最新」三个字挨着插件的
+   「一键更新」只会误导），逻辑同型（检查 → 有更新给更新、没更新给重新检查），两颗按钮风格统一
+   （都带 `primary`）。文案键：+`action.checkUpdates`，−`action.selfCurrent`、−`action.updateAll`。
+5. **验收**：`client-copy.test.mjs` **21/21**（新增：状态机与 `applied` 两组断言）；
+   `install-spec.test.mjs` **12/12**；`market-ui.e2e.mjs` **45/45**（新增：初始「检查更新」、
+   点后变「一键更新（2）」、两颗按钮都带 `--primary`、页脚 `drawerFoot` 为 0；第一条的注入结果
+   改成 `restart-required`，必须计为成功并显示重启提示）；`release.ps1 -LocalOnly -Bump none`
+   全绿；`adversarial-host.mjs` 全过。e2e 这轮还顺手抓出一个写代码时引入的 bug：`loadInstalled`
+   无参调用时 `options` 是 `undefined`，`options.onDone` 抛错会把挂载时的首次回执整个吞掉。
+
 ## 1.1.3
 
 修「顶部提示条显示不全」——提示条被压成一条、文字只剩半行（用户截图就是这样）。

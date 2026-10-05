@@ -75,8 +75,8 @@ check('词典里除动态前缀外的键都真的被用到（没有僵尸文案�
 })
 check('新增的两组文案职责齐全（自更新 / 可更新列表 / 三个错误码）', () => {
   for (const key of [
-    'action.checkSelf', 'action.checkingSelf', 'action.selfCurrent', 'action.updateSelf', 'action.updatingSelf',
-    'action.recheckSelf', 'action.updateAll', 'action.updateAllCount', 'action.updatingAll',
+    'action.checkSelf', 'action.checkingSelf', 'action.updateSelf', 'action.updatingSelf',
+    'action.recheckSelf', 'action.checkUpdates', 'action.updateAllCount', 'action.updatingAll',
     'updates.title', 'updates.entryBadge', 'updates.hint', 'updates.batchProgress', 'updates.empty.title', 'updates.empty.body',
     'notice.selfFound', 'notice.selfCurrent', 'notice.selfUpdated', 'notice.updatesFound', 'notice.updatesNone',
     'notice.updateAllStart', 'notice.updateAllDone', 'notice.updateAllNone', 'tab.updates',
@@ -85,6 +85,9 @@ check('新增的两组文案职责齐全（自更新 / 可更新列表 / 三个�
   ]) {
     assert.ok(zhKeys.has(key), `缺少文案键 ${key}`)
   }
+  // 「已是最新」与裸「一键更新」随按钮状态机改版删除：一个有歧义（插件明明有更新），一个只剩带计数的版本。
+  assert.equal(zhKeys.has('action.selfCurrent'), false, '「已是最新」文案应已删除')
+  assert.equal(zhKeys.has('action.updateAll'), false, '裸「一键更新」应已删除（只剩带计数的 updateAllCount）')
 })
 check('更新失败的「文件被占用」类错误有可操作回执（照 dsh-market 的 windows-file-locked 分类）', () => {
   // 1) 能识别 EPERM/EACCES/拒绝访问（诊断或消息任一命中）
@@ -105,6 +108,27 @@ check('回执文案精简（用户反馈：toast 尽量短）', () => {
   // 英文侧同步精简，且不残留旧长句
   assert.equal(enBlock.includes('Catalog refreshed: {count} plugins'), false, 'en 旧刷新长句应已删除')
   assert.equal(enBlock.includes('Update all finished'), false, 'en 旧汇总长句应已删除')
+})
+check('「检查更新」单按钮状态机：检查过才给一键更新/重新检查，页脚旧按钮已合并删除', () => {
+  assert.match(zhBlock, /"action\.checkUpdates": "检查更新"/, '初始态文案是「检查更新」')
+  assert.match(source, /var checked = props\.checkPhase === "checked";/, '三态里的 checked 来自页面状态')
+  assert.match(source, /onClick: canUpdateAll \? props\.onUpdateAll : props\.onCheckUpdates/, '同一颗按钮按状态切换点击目标')
+  assert.match(source, /checked \? t\("action\.recheckSelf"\) : t\("action\.checkUpdates"\)/, '检查过没更新 → 重新检查；没检查过 → 检查更新')
+  assert.match(source, /function checkUpdates\(\)/, '要有检查入口函数')
+  assert.match(source, /onCheckUpdates: checkUpdates/, '按钮要接上检查入口')
+  assert.match(source, /setCheckPhase\("checked"\)/, '批量跑完也要进入已检查态')
+  // 页脚那颗独立的「重新检查」合并进上面这颗按钮：UpdatesPane 里不该再有 drawerFoot。
+  const pane = source.slice(source.indexOf('function UpdatesPane'), source.indexOf('function MarketPage'))
+  assert.equal(pane.includes('dshpm-drawerFoot'), false, '页脚按钮已合并删除')
+  // 两颗按钮风格统一（用户要求：旁边那颗也用 primary）
+  assert.match(pane, /className: "dshpm-btn dshpm-btn--primary" \+ \(self\.available/, '市场更新检查按钮与左按钮同为 primary')
+})
+check('restart-required 计为成功：装好了待重启不是失败（用户报的「成功 0、失败 2」）', () => {
+  assert.match(source, /function noticeFromResult/, '结果映射函数')
+  assert.match(source, /kind: "warn", applied: true/, 'restart-required：警示气泡但 applied=true')
+  assert.match(source, /kind: "info", applied: false/, 'cancelled / 无变更不计成功')
+  assert.match(source, /report\(\{ ok: outcome\.applied === true/, '行内结果按 applied 计，不按气泡级别')
+  assert.match(source, /if \(outcome && outcome\.ok\) ok\+\+; else fail\+\+;/, '批量汇总按 outcome.ok（即 applied）计数')
 })
 
 // ── 取样式表：模板字面量 var STYLES = `...` ─────────────────────────
@@ -198,11 +222,14 @@ check('已安装列表两个页签都会加载（角标与列表都依赖它）'
   assert.ok(!/if \(tab !== "installed"\) return undefined;\s*\n\s*loadInstalled/.test(source), '不应再按页签条件加载')
   assert.ok(at > 0)
 })
-check('自更新按钮在文案上区分检查中/已是最新/可更新/更新中四种状态', () => {
+check('自更新按钮改名「市场更新检查」，状态文案：检查中/可更新/重新检查/更新中', () => {
   assert.match(source, /selfPhase === "checking" \? t\("action\.checkingSelf"\)/)
   assert.match(source, /selfPhase === "installing" \? t\("action\.updatingSelf"\)/)
   assert.match(source, /selfAvailable \? t\("action\.updateSelf"/)
-  assert.match(source, /selfPhase === "ready" \? t\("action\.selfCurrent"\)/)
+  // 检查完没有新版本 →「重新检查」（与左边「检查更新」同一套逻辑，不再写「已是最新」）。
+  assert.match(source, /selfPhase === "ready" \? t\("action\.recheckSelf"\)/)
+  assert.match(zhBlock, /"action\.checkSelf": "市场更新检查"/, '按钮已按用户要求改名')
+  assert.equal(zhBlock.includes('"action.selfCurrent"'), false, '「已是最新」挨着插件更新只会误导')
 })
 check('入口与反馈：页签是入口，两个新按钮各带忙碌态 + 回执；自动检查规则齐全', () => {
   // 入口：头部按钮删掉后，第三个页签是唯一入口，点它仍要给回执。
@@ -214,8 +241,8 @@ check('入口与反馈：页签是入口，两个新按钮各带忙碌态 + 回�
   // 新按钮 1：检查市场更新（原头部按钮搬来）
   assert.match(source, /"aria-busy": self\.busy \? "true" : "false"/, '检查市场更新要暴露 aria-busy')
   assert.match(source, /runSelfCheck\(function \(error, info\)/, '检查结果要回到回执气泡')
-  // 新按钮 2：一键更新
-  assert.match(source, /"aria-busy": batchRunning \? "true" : "false"/, '一键更新要暴露 aria-busy')
+  // 新按钮 2：合并后的「检查更新 / 一键更新 / 重新检查」单按钮
+  assert.match(source, /"aria-busy": \(batchRunning \|\| checking\) \? "true" : "false"/, '合并按钮（检查与批量）要暴露 aria-busy')
   assert.match(source, /t\("notice\.updateAllStart"/, '一键更新开始要有回执')
   assert.match(source, /t\("notice\.updateAllDone"/, '一键更新结束要有汇总回执')
   assert.match(source, /outcome && outcome\.pending/, '卡在「要批准构建脚本」时必须暂停批量')

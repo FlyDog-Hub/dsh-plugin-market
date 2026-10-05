@@ -63,14 +63,15 @@ the market page in the main column.
   hot-load), uninstall with a second confirmation
 - **Two ways to update** (v1.1.4): the tab bar is Discover / Installed / **Updates** (carrying the
   count badge; the sidebar entry has one too). The Updates page lists every outdated plugin with its
-  own "Update to x.y.z", and its header adds **Update all** — it runs them one at a time over the
-  same install endpoint, so a failure never takes the others down, and it ends with a summary
-  receipt; if a plugin needs its build scripts approved, the batch pauses there. The per-row buttons
-  stay, so you can go slow if you prefer
-- **Update the market itself** (v1.1.0): "Check for updates" now lives in the Updates page header; it
-  turns into "Update to x.y.z" when a newer release exists, downloads it, verifies it, and hands it to
-  the Host — then asks for a **DSH restart** (the Host half is cached in the running process, so the
-  button never claims it already took effect)
+  own "Update to x.y.z", and its header is **one state-machine button**: it starts as
+  **Check for updates**; after a check it turns into **Update all (N)** — one at a time over the same
+  install endpoint, so a failure never takes the others down, ending with a summary receipt (and it
+  pauses when a plugin needs its build scripts approved) — or into **Check again** when nothing is
+  left to update. The per-row buttons stay, so you can go slow if you prefer
+- **Update the market itself** (v1.1.0): "Market update check" lives next to it in the Updates page
+  header; it turns into "Update to x.y.z" when a newer release exists, downloads it, verifies it, and
+  hands it to the Host — then asks for a **DSH restart** (the Host half is cached in the running
+  process, so the button never claims it already took effect)
 - **Automatic checks** (v1.1.4): one self-update check every time DSH starts, then one plugin-update
   check every hour — the badges follow automatically, and a receipt only appears when something new
   actually showed up

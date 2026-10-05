@@ -221,13 +221,12 @@ window.__ModuleLoader__.load({
         "detail.added": "收录时间",
         "meta.stars": "★ {count}",
         "meta.downloads": "↓ {count}",
-        "action.checkSelf": "检查市场更新",
+        "action.checkUpdates": "检查更新",
+        "action.checkSelf": "市场更新检查",
         "action.checkingSelf": "检查中…",
-        "action.selfCurrent": "已是最新",
         "action.recheckSelf": "重新检查",
         "action.updateSelf": "更新到 {version}",
         "action.updatingSelf": "正在更新市场…",
-        "action.updateAll": "一键更新",
         "action.updateAllCount": "一键更新（{count}）",
         "action.updatingAll": "更新中…",
         "self.available": "发现新版本 v{version}",
@@ -458,13 +457,12 @@ window.__ModuleLoader__.load({
         "detail.added": "Added",
         "meta.stars": "★ {count}",
         "meta.downloads": "↓ {count}",
-        "action.checkSelf": "Check for updates",
+        "action.checkUpdates": "Check for updates",
+        "action.checkSelf": "Market update check",
         "action.checkingSelf": "Checking…",
-        "action.selfCurrent": "Up to date",
         "action.recheckSelf": "Check again",
         "action.updateSelf": "Update to {version}",
         "action.updatingSelf": "Updating the market…",
-        "action.updateAll": "Update all",
         "action.updateAllCount": "Update all ({count})",
         "action.updatingAll": "Updating…",
         "self.available": "New version v{version} available",
@@ -1087,7 +1085,7 @@ window.__ModuleLoader__.load({
    那两样是为了「收起时高度归 0」，留着反而会把很长的更新列表裁掉（列表高 > 1600px 时）。 */
 .dshpm-updatesPanel { display:flex; flex-direction:column; gap:10px; box-sizing:border-box; padding:12px 14px; border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.1)); border-radius:var(--dsw-radius-md,10px); background:var(--dsw-alias-bg-layer-1,transparent); }
 .dshpm-drawerHead { display:flex; align-items:flex-start; gap:8px; }
-/* 可更新页页头右侧的两个按钮（一键更新 / 检查市场更新），窄屏下换行到标题下面。 */
+/* 可更新页页头右侧的两个按钮（检查更新状态机 / 市场更新检查），窄屏下换行到标题下面。 */
 .dshpm-updatesActions { flex:none; display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-left:auto; }
 .dshpm-drawerIcon { flex:none; display:inline-flex; margin-top:2px; color:var(--dsw-alias-brand-primary,#4d6bfe); }
 .dshpm-drawerHeading { flex:1 1 auto; min-width:0; }
@@ -1283,7 +1281,7 @@ window.__ModuleLoader__.load({
     // 1) 每次启动 DSH：client 模块随宿主 apply 一次 → 立刻检查一次**市场本体**更新；
     // 2) 启动后每 1 小时 → 检查一次**插件**更新（读 /installed，宿主已把目录 join 进来），
     //    结果同时喂给侧边栏角标与「可更新」页签。
-    // 状态放模块级：页面打开时直接是「已检查过」的样子，不必再点一次「检查市场更新」。
+    // 状态放模块级：页面打开时直接是「已检查过」的样子，不必再点一次「市场更新检查」。
     var PLUGIN_CHECK_INTERVAL_MS = 60 * 60 * 1000;
     var selfCheckState = { phase: "idle", data: null, error: null, at: 0 };
     var selfCheckListeners = [];
@@ -2020,21 +2018,25 @@ window.__ModuleLoader__.load({
     }
 
     // ───────────────────────────── 结果提示 ─────────────────────────────
+    /** applied：这次调用到底**装上没有**——回执行不行、批量计成功还是失败，都看它，
+     * 与气泡的严重级别（success/warn/info）解耦。restart-required 是「装好了，重启 DSH
+     * 才换到新代码」：文件已就位，算成功；以前按 kind!=='success' 计失败，于是带重启的
+     * 更新永远汇成「成功 0、失败 2」，看起来像更新坏了。 */
     function noticeFromResult(payload, kind, name) {
       var application = payload && payload.application ? String(payload.application) : "applied";
       var changed = !payload || payload.changed !== false;
       var warnings = payload && payload.warnings && payload.warnings.length ? payload.warnings.join("；") : "";
       var base;
       if (!changed && application !== "restart-required" && application !== "overridden" && application !== "cancelled") {
-        base = { kind: "info", text: t("notice.noChange") };
+        base = { kind: "info", applied: false, text: t("notice.noChange") };
       } else if (application === "restart-required") {
-        base = { kind: "warn", text: kind === "remove" ? t("notice.removeRestart", { name: name }) : t("notice.installRestart", { name: name }) };
+        base = { kind: "warn", applied: true, text: kind === "remove" ? t("notice.removeRestart", { name: name }) : t("notice.installRestart", { name: name }) };
       } else if (application === "cancelled") {
-        base = { kind: "info", text: kind === "remove" ? t("notice.removeCancelled", { name: name }) : t("notice.installCancelled", { name: name }) };
+        base = { kind: "info", applied: false, text: kind === "remove" ? t("notice.removeCancelled", { name: name }) : t("notice.installCancelled", { name: name }) };
       } else if (application === "overridden") {
-        base = { kind: "warn", text: t("notice.installOverridden", { name: name }) };
+        base = { kind: "warn", applied: true, text: t("notice.installOverridden", { name: name }) };
       } else {
-        base = { kind: "success", text: kind === "remove" ? t("notice.removeApplied", { name: name }) : t("notice.installApplied", { name: name }) };
+        base = { kind: "success", applied: true, text: kind === "remove" ? t("notice.removeApplied", { name: name }) : t("notice.installApplied", { name: name }) };
       }
       if (warnings) base.text = base.text + " · " + t("notice.installWarnings", { warnings: warnings });
       return base;
@@ -2049,8 +2051,10 @@ window.__ModuleLoader__.load({
 
     // ───────────────────── 可更新插件页（第三个页签：发现 / 已安装 / 可更新） ─────────────────────
     // 由「头部按钮就地展开的抽屉」搬成页签——用户圈的那个位置（已安装右边再开一个）。
-    // 页头右侧是用户指定的两个按钮：**一键更新**（顺序逐个跑）与**检查市场更新**（原头部按钮搬来），
-    // 两者的反馈沿用原头部那套：忙碌态（spinner + aria-busy + 禁用）+ 回执气泡。
+    // 页头右侧两个按钮（用户指定）：左边是**合并后的单按钮状态机**——没检查过显示
+    //「检查更新」，按下重读列表；检查过且有更新变成「一键更新（N）」，没有则变成
+    //「重新检查」（原页脚那颗独立按钮合并进来了）。右边管市场本体（市场更新检查）。
+    // 两颗按钮样式统一（primary）；忙碌态与回执气泡沿用原来那套。
     // 逐个点仍然保留：一次只改一个依赖、失败不连坐，想稳就一条条来。
     function UpdatesPane(props) {
       var state = props.state || {};
@@ -2059,6 +2063,11 @@ window.__ModuleLoader__.load({
       var updateBundle = props.onUpdate;
       var batch = props.batch || null;
       var batchRunning = !!(batch && batch.running);
+      // 状态机的三态：没检查过（idle）→ 按下「检查更新」→ 检查过（checked）。
+      // 列表本身在页签打开时就会加载，但按钮不谎称「已检查」——检查这个动作要点出来。
+      var checked = props.checkPhase === "checked";
+      var checking = state.phase === "loading";
+      var canUpdateAll = checked && bundles.length > 0;
       var self = props.self || {};
       var hasCatalog = props.catalogUpdated !== null && props.catalogUpdated !== undefined;
       var subtitle = batchRunning
@@ -2146,23 +2155,28 @@ window.__ModuleLoader__.load({
           el("div", { className: "dshpm-drawerHeading" },
             el("div", { className: "dshpm-drawerTitle" }, t("updates.title")),
             el("div", { className: "dshpm-drawerSubtitle" }, subtitle)),
-          // 两个按钮：左管下面这一列（一键更新），右管市场本体（检查市场更新）。
+          // 两个按钮（样式统一）：左边是合并后的状态机（检查更新 / 一键更新 / 重新检查），
+          // 右边管市场本体（市场更新检查，同一套「按下检查 → 有更新给更新、没更新给重新检查」）。
           // 忙碌态与回执气泡就是从被删掉的那两个头部按钮上搬过来的。
           el("div", { className: "dshpm-updatesActions" },
             el("button", {
               type: "button",
               className: "dshpm-btn dshpm-btn--primary",
-              disabled: batchRunning || bundles.length === 0 || props.readOnly === true,
-              "aria-busy": batchRunning ? "true" : "false",
-              title: bundles.length ? t("action.updateAllCount", { count: bundles.length }) : t("notice.updateAllNone"),
-              onClick: props.onUpdateAll
-            }, batchRunning ? el(IconSpinner, { size: 13 }) : el(IconUpgrade, { size: 13 }),
+              disabled: batchRunning || checking || (props.readOnly === true && canUpdateAll),
+              "aria-busy": (batchRunning || checking) ? "true" : "false",
+              title: props.readOnly && canUpdateAll ? t("readonly.body")
+                : batchRunning ? t("action.updatingAll")
+                  : canUpdateAll ? t("action.updateAllCount", { count: bundles.length })
+                    : checked ? t("action.recheckSelf") : t("action.checkUpdates"),
+              onClick: canUpdateAll ? props.onUpdateAll : props.onCheckUpdates
+            }, batchRunning || checking ? el(IconSpinner, { size: 13 })
+              : canUpdateAll ? el(IconUpgrade, { size: 13 }) : el(IconRefresh, { size: 13 }),
               batchRunning ? t("action.updatingAll")
-                : bundles.length ? t("action.updateAllCount", { count: bundles.length })
-                  : t("action.updateAll")),
+                : canUpdateAll ? t("action.updateAllCount", { count: bundles.length })
+                  : checked ? t("action.recheckSelf") : t("action.checkUpdates")),
             el("button", {
               type: "button",
-              className: "dshpm-btn" + (self.available ? " dshpm-btn--primary dshpm-btn--pulse" : ""),
+              className: "dshpm-btn dshpm-btn--primary" + (self.available ? " dshpm-btn--pulse" : ""),
               disabled: self.busy === true,
               "aria-busy": self.busy ? "true" : "false",
               "data-state": self.available ? "available" : self.phase,
@@ -2173,15 +2187,7 @@ window.__ModuleLoader__.load({
                 : self.phase === "ready" ? el(IconCheck, { size: 13 }) : el(IconUpgrade, { size: 13 }),
               self.label || t("action.checkSelf")))),
         el("div", { className: "dshpm-drawerHint" }, t("updates.hint")),
-        el("div", { className: "dshpm-drawerBody" }, body()),
-        el("div", { className: "dshpm-drawerFoot" },
-          el("button", {
-            type: "button",
-            className: "dshpm-btn",
-            disabled: state.phase === "loading",
-            onClick: props.onReload
-          }, state.phase === "loading" ? el(IconSpinner, { size: 12 }) : el(IconRefresh, { size: 12 }),
-            t("action.recheckSelf"))));
+        el("div", { className: "dshpm-drawerBody" }, body()));
     };
 
     // ───────────────────────────── 市场主面板 ─────────────────────────────
@@ -2304,6 +2310,13 @@ window.__ModuleLoader__.load({
       var batch = batchState[0];
       var setBatch = batchState[1];
 
+      // 「检查更新」按钮的三态（用户指定）：idle（没点过）→ 按下重读列表 → checked，
+      // checked 后按钮按结果变成「一键更新（N）」或「重新检查」。
+      // 列表在页签打开时就自动加载，但那不算「检查过」——按钮不抢跑。
+      var checkState = React.useState("idle");
+      var checkPhase = checkState[0];
+      var setCheckPhase = checkState[1];
+
       /** 「发现 N 个可更新」每次挂载只提示一次，别在每次重读列表时重复弹。 */
       var announcedRef = React.useRef(false);
 
@@ -2420,6 +2433,10 @@ window.__ModuleLoader__.load({
           if (!isCurrent("installed", bag.token)) return;
           setInstalled({ phase: "ready", data: payload, error: null });
           var count = publishUpdateCount(payload && payload.bundles);
+          // 「检查更新」按钮等这个回调才能切换三态（检查过 → 一键更新 / 重新检查）。
+          // 失败路径不回调：按钮留在「检查更新」，错误回执已经另发了。
+          // options 在挂载时的无参调用里是 undefined——必须先判再取。
+          if (options && typeof options.onDone === "function") options.onDone(count);
           if (announce) {
             announcedRef.current = true;
             var installedTotal = payload && payload.bundles ? payload.bundles.length : 0;
@@ -2564,7 +2581,9 @@ window.__ModuleLoader__.load({
           setPending(null);
           var outcome = noticeFromResult(payload, "install", label);
           if (!silent) setNotice(outcome);
-          report({ ok: outcome.kind === "success", text: outcome.text });
+          // 计成功看 applied（restart-required 也算装上了），不看气泡级别——
+          // 否则「装好待重启」的更新会被批量汇成失败（用户截图里的「成功 0、失败 2」）。
+          report({ ok: outcome.applied === true, text: outcome.text });
           bumpTick();
         }).catch(function (error) {
           if (!mountedRef.current) return;
@@ -2619,6 +2638,8 @@ window.__ModuleLoader__.load({
         function finish(stoppedText) {
           if (!mountedRef.current) return;
           setBatch(null);
+          // 跑完批量 = 已经「检查过一轮」：按钮按重读后的结果给「一键更新」或「重新检查」。
+          setCheckPhase("checked");
           if (stoppedText) setNotice({ kind: "warn", text: stoppedText });
           else setNotice({ kind: fail > 0 ? "warn" : "success", text: t("notice.updateAllDone", { ok: ok, fail: fail }) });
           bumpTick();
@@ -2719,7 +2740,7 @@ window.__ModuleLoader__.load({
       }
 
       /**
-       * 「检查市场更新」（已搬进「可更新」页）：走模块级状态机——启动时那次自动检查写的就是
+       * 「市场更新检查」（已搬进「可更新」页）：走模块级状态机——启动时那次自动检查写的就是
        * 它，所以页面一打开按钮已经是结果；再点一次才打 /self-update（宿主侧有 10 分钟缓存，
        * 连点不会打爆 CDN），结果进回执气泡。
        */
@@ -2764,8 +2785,17 @@ window.__ModuleLoader__.load({
       }
 
       /**
+       * 「检查更新」按钮（合并了原来的「一键更新」入口与页脚「重新检查」）：
+       * 按下重读已安装列表并**必定给一句话**回执；读完按钮切到 checked 态——
+       * 有更新显示「一键更新（N）」，没有更新显示「重新检查」。
+       */
+      function checkUpdates() {
+        loadInstalled({ announce: true, onDone: function () { setCheckPhase("checked"); } });
+      }
+
+      /**
        * 打开「可更新」页签：页签本身就是反馈（内容整页出现），同时重读一次已安装列表，
-       * **无论有没有更新都回一句话**——「检查市场更新」一直是这么做的，不能一个有反馈一个静默。
+       * **无论有没有更新都回一句话**——「市场更新检查」一直是这么做的，不能一个有反馈一个静默。
        * 头部的「更新插件」按钮已删除（页签与侧边栏角标取代了它），这是它原来的入口。
        */
       function goUpdates() {
@@ -2848,9 +2878,10 @@ window.__ModuleLoader__.load({
       var selfLabel = selfPhase === "checking" ? t("action.checkingSelf")
         : selfPhase === "installing" ? t("action.updatingSelf")
           : selfAvailable ? t("action.updateSelf", { version: selfInfo.latest })
-            : selfPhase === "ready" ? t("action.selfCurrent")
-              : selfPhase === "error" ? t("action.recheckSelf")
-                : t("action.checkSelf");
+            // 就绪且没有新版本 →「重新检查」（与左边「检查更新」同一套逻辑；
+            //「已是最新」三个字挨着插件的「一键更新」只会让人以为插件也最新了）。
+            : selfPhase === "ready" ? t("action.recheckSelf")
+              : t("action.checkSelf");
       var selfTitle = selfAvailable
         ? t("self.available", { version: selfInfo.latest })
         : selfPhase === "ready"
@@ -2875,7 +2906,7 @@ window.__ModuleLoader__.load({
               ? el("div", { className: "dshpm-selfNote" }, el(IconInfo, { size: 12 }), el("span", null, t("self.linkNote")))
               : null),
           el("div", { className: "dshpm-headerActions" },
-            // 头部只留「刷新目录」：「更新插件」被第三个页签取代、「检查市场更新」搬进了可更新页，
+            // 头部只留「刷新目录」：「更新插件」被第三个页签取代、「市场更新检查」搬进了可更新页，
             // 连同它们的反馈（忙碌态 + 回执气泡）一起搬过去——见 UpdatesPane 的 dshpm-updatesActions。
             el("button", {
               type: "button",
@@ -3003,6 +3034,9 @@ window.__ModuleLoader__.load({
               },
               onUpdate: updateBundle,
               onUpdateAll: updateAll,
+              // 合并后的单按钮状态机：idle → 检查更新 → checked（一键更新 / 重新检查）。
+              checkPhase: checkPhase,
+              onCheckUpdates: checkUpdates,
               onReload: function () { loadInstalled({ announce: true }); },
               onRefreshCatalog: refreshCatalog
             })
