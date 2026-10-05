@@ -287,6 +287,19 @@ try {
   )
   expect('激活页签的滑动底线是 scaleX(1)（未激活的为 scaleX(0)，视觉上从一个滑到另一个）', String(tabUnderline?.transform).startsWith('matrix(1'), JSON.stringify(tabUnderline))
 
+  // README 用图：发现页的完整状态（真实目录 + 三个页签 + 当前版本号）。等入场动画收尾再拍，
+  // 免得截到半透明的中间帧；截图目录被 gitignore，入 docs/assets 才是发布物。
+  await new Promise((resolve) => setTimeout(resolve, 900))
+  const tabBeforeShot = await evaluate(client, `document.querySelector('.dshpm-tab[data-active="true"]')?.textContent.trim()`)
+  await screenshot(client, join(shotDir, 'market-discover.png'))
+  const tabAfterShot = await evaluate(client, `document.querySelector('.dshpm-tab[data-active="true"]')?.textContent.trim()`)
+  expect(
+    'README 用图是在「发现」页签拍的（拍前拍后都没被切走）',
+    /发现|Discover/.test(String(tabBeforeShot)) && /发现|Discover/.test(String(tabAfterShot)),
+    JSON.stringify({ tabBeforeShot, tabAfterShot }),
+  )
+  console.log(`  · 截图：${join(shotDir, 'market-discover.png')}`)
+
   console.log('\n[3b] 已安装页的列表动效')
   await evaluate(client, `Array.from(document.querySelectorAll('.dshpm-tab')).find(b => /已安装|Installed/.test(b.textContent)).click(); true`)
   await waitFor(client, `document.querySelector('.dshpm-row') !== null`, 15000, '已安装页的第一行')
