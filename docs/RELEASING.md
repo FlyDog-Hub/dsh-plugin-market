@@ -38,7 +38,11 @@
 
 ## 2. 一次发布做什么
 
-`scripts/release.ps1` 按固定顺序执行，任何一步失败就停，不会留下半个版本：
+发布分两段：**本地只做版本与门禁**，**打包与发布全在 GitHub Actions**。
+本地不产生任何打包产物（`dist/` 始终空着、仓库里没有 `releases/`），也不消耗 gh / npm token；
+回退与旧版安装一律从 GitHub Release 附件下载（§4.1）。
+
+本地段（`scripts/release.ps1`）按固定顺序执行，任何一步失败就停，不会留下半个版本：
 
 1. **读**：解析 `plugin-market/package.json` 的 `version` 并校验 SemVer 形状；
 2. **门禁**（全绿才继续）：
@@ -54,31 +58,37 @@
      其它路径（例如并行进行的 `verify/**` 验收脚本）有改动只警告、不阻塞——它们既不进发布物，
      也不进发布提交，把一场正在跑的验收当成发布阻塞没有意义。
 3. **递增**：按 `-Bump` 写入新的 `version`；
-4. **打包**：`pnpm pack` → `dist/deepseek-harness-market-<version>.tgz`，并写 `dist/version.json`
-   （`version` / `versionCode` / 提交数 / 短哈希 / 构建时间）；
-5. **入 CDN 目录**：把 tarball 复制进 `releases/`，并更新 `releases/index.json`
-   （`latest` + 每版的 `versionCode` / `sha256` / `bytes` / `tarball`）——这两样必须进版本提交，
-   从而进标签，自更新按钮才取得到（§4.4）；
-6. **发布**：`git commit` + `git tag -a v<version>` + `git push --follow-tags` +
-   `gh release create v<version> dist/*.tgz dist/version.json`；标签/提交里已含 `releases/`。
+4. **提交**：`git commit`（内容只有 `plugin-market/package.json`）+ `git tag -a v<version>`；
+5. **推送**：`git push --follow-tags`。标签一推上去，Actions「Pack and Release」自动接手。
+
+CI 段（`.github/workflows/pack-release.yml`，`push: tags: ['v*']` 触发；也可 `workflow_dispatch` 补跑）：
+
+1. 检出标签，跑 `release.ps1 -CiPack`：**再过一遍同样的门禁**，打包内容以标签为准（不是分支工作区）；
+2. `pnpm pack` → `dist/deepseek-harness-market-<version>.tgz` + `dist/version.json`
+   （`version` / `versionCode` / 提交数 / 短哈希 / 构建时间）——产物只落在 CI 工作区，用完即弃；
+3. `gh release create v<version> dist/*.tgz dist/version.json`：**Release 附件是回退与旧版安装的唯一下载源**；
+   Release 已存在时改走 `gh release upload --clobber`（重跑幂等）；
+4. `publish-npm` job：`npm publish --access public`，版本已在 npm 上则跳过；凭据是仓库 secret `NPM_TOKEN`。
+   （`publish-npm.yml` 保留作手动补发——由 GITHUB_TOKEN 创建的 Release 不会触发其它 workflow，
+   这也是 npm 发布必须并进本 workflow 的原因。）
 
 ## 3. 用法
 
 ```powershell
-# 首个版本：1.0.0（不递增，直接发）
-pwsh -File scripts\release.ps1
-
-# 之后每个版本按改动性质递增
+# 门禁 → 递增 → 提交 → 打标签 → 推送（推送后由 Actions 打包、建 Release、发 npm）
 pwsh -File scripts\release.ps1 -Bump patch      # 修复
 pwsh -File scripts\release.ps1 -Bump minor      # 新功能
 pwsh -File scripts\release.ps1 -Bump major      # 破坏兼容
 
-# 只打包、不改版本、不提交、不发布（本地验证包装是否正确）
+# 只跑门禁：不改版本、不打包、不提交、不发布（本地验证的唯一正确姿势）
 pwsh -File scripts\release.ps1 -LocalOnly
 
-# 到打包为止，不推送也不建 Release
-pwsh -File scripts\release.ps1 -SkipPush
+# 递增 + 提交 + 打标签，但不推送（想先看一眼再推）
+pwsh -File scripts\release.ps1 -Bump patch -SkipPush
 ```
+
+`-CiPack` 是 CI 专用：只在 `GITHUB_ACTIONS=true` 时放行，本地调用直接被拒——
+本地打包会留产物、还会消耗 gh token，正是这次迁移要消灭的两件事。
 
 **代理不是必须的**：2026-10-04 实测，不带 `HTTPS_PROXY` 时 `git ls-remote`（842ms）、`gh release list`（1.0s）、
 GitHub API（1.6s）、Release 附件下载（2.7s）**全部直连可用**，且 `git` 走代理反而更慢（1239ms）。
@@ -96,11 +106,11 @@ $env:HTTPS_PROXY='http://127.0.0.1:7890'; $env:HTTP_PROXY='http://127.0.0.1:7890
 ### 4.1 从 GitHub Release 附件直接安装（今天就能用，已验证）
 
 ```powershell
-# 版本号换成当前 Release 的（历次 Release 见仓库 Releases 页）
+# 版本号换成你要装的那版（历次 Release 见仓库 Releases 页）；**回退就是把版本号换成更旧的那个**
 dsh plugin --profile web add https://github.com/Winnie-0721/dsh-plugin-market/releases/download/v1.1.1/deepseek-harness-market-1.1.1.tgz
 ```
 
-装好第一次之后就不必再记这条命令：「可更新」页页头的「插件市场更新」会走 §4.4 的 CDN 通道自己完成升级。
+装好第一次之后就不必再记这条命令：「可更新」页页头的「插件市场更新」会走 §4.4 的自更新通道自己完成升级。
 
 `dsh plugin add` 的 spec 解析接受 `.tgz` URL（`parseInstallSpec` 的 tarball 形状），
 上面这条命令在全新 profile 上实测：**10.6 秒装完、bundle 已激活、`node_modules` 里有包**。
@@ -115,7 +125,9 @@ dsh plugin --profile web add https://github.com/Winnie-0721/dsh-plugin-market/re
 （registry 建议加 scope，但用户名 `winnie_0721` 含下划线，而 scope 不允许下划线，需另建组织。）
 最终选定 `deepseek-harness-market`，实测可用且无近似名冲突。
 
-发布前确认：
+常规发布**不用手动碰 npm**：`pack-release.yml` 的 `publish-npm` job 会在 Release 之后
+`npm publish --access public`（版本已在 npm 上则跳过）。手动补发 / 重试时按下述确认：
+
 1. `npm whoami` 能返回你的用户名（否则先 `npm login` 或设置 `NPM_TOKEN`）；
 2. `npm view deepseek-harness-market version` 返回 404（名字仍可用）；
 3. `npm publish --access public`（公开包需要显式指定 access）。
@@ -139,26 +151,28 @@ pnpm publish --access public --no-git-checks
 
 | 通道 | 实测 | 定位 |
 |---|---|---|
-| **GitHub Releases API** | `releases/latest` → **200**（1.6s / 450ms），`X-RateLimit-Remaining: 47/60` | **第一源**：权威且最新；代价是匿名 **60 次/小时/IP**，被限流时返回 403 → 当成该源失败继续往下 |
-| jsDelivr 标签列表（Data API） | 200，85–2100ms，不限流；**但列表滞后**（发布 1 小时后仍只有旧版本） | 第二源 |
-| jsDelivr `@main` 的 `releases/index.json` | 200；分支内容在 CDN 上可缓存 12 小时，**实测滞后** | 第三源 |
-| 标签探测（兜底） | 任意标签**按需取**：刚推完 `@v1.1.1/…` 立刻 200 | 前三个都说"没更新"时，按常规递进探 3 个候选标签（有界） |
+| **GitHub Releases API** | `releases/latest` → **200**（1.6s / 450ms），`X-RateLimit-Remaining: 47/60` | **第一源**：权威且最新；v1.1.6 起附件元数据（`digest`+`size`）直接成条目、不查清单；匿名 **60 次/小时/IP**，被限流返回 403 → 当成该源失败继续往下 |
+| jsDelivr 标签列表（Data API） | 200，85–2100ms，不限流；**但列表滞后**（发布 1 小时后仍只有旧版本） | 第二源（新版本会卡在"拿不到该版清单"一步，404 记档） |
+| jsDelivr `@main` 的 `releases/index.json` | 200；分支内容在 CDN 上可缓存 12 小时，**实测滞后** | 第三源（v1.1.6 起仓库不再有这份文件，新版本上 404 记档） |
+| 标签探测（兜底） | 任意标签**按需取**：刚推完 `@v1.1.1/…` 立刻 200 | 前三个都说"没更新"时，按常规递进探 3 个候选标签（有界）；新版本的标签没有清单 → 404 记档，只为 ≤v1.1.5 补位 |
 
 > **更正一条早先写错的结论。** 这里曾写着「本机直连 `api.github.com` 一律 403（GFW 拦截）、`github.com` 被重置，需要 Clash 代理」。
 > 那是错的，两处原因：当时本仓库还是 **private**（未鉴权取 `releases/latest` 就是 404），而匿名限流返回的 403 被我误读成封锁。
 > 今天实测：API 200、`github.com` 200、**Release 附件直连 200（2.7s；走代理 737ms）**，
 > 下载字节的 sha256 与本地构建逐字节一致。**代理不是必须的，只是更快。**
 
-jsDelivr 那条路仍然保留并且是下载的主力，因为它不限流、延迟稳定；它取不到 Release 附件，
-所以 `scripts/release.ps1` 把产物也放进了仓库：
+**v1.1.6 起：打包产物不再进仓库**（`releases/` 目录已从仓库移除；回退与旧版安装一律从
+GitHub Release 附件下载）。这条决定连带改了检查与下载的分工——如实记在这里：
 
-1. 把 `pnpm pack` 出的 tarball 复制进仓库的 `releases/`；
-2. 生成/更新 `releases/index.json`（`latest` + 每个版本的 `versionCode` / `sha256` / `bytes` / `tarball`）；
-3. 两者随版本提交一起提交——**因此它们一定在标签里**，客户端按 `@v<version>` 取到的就是那一版的内容。
-
-下载时依次试三条路：`@<tag>/releases/<file>.tgz` → `@main/releases/<file>.tgz` → GitHub Release 附件；
-**内容由 `sha256` 与产物自证负责**，从哪条路取都不影响安全性（三道校验见 [API-CONTRACT §2.9](API-CONTRACT.md)）。
-传输层失败才换路；字节都拿到了却哈希不符是篡改信号，直接硬失败。
+- **新版本靠第 1 源**：GitHub API 的附件元数据自带 `digest`（sha256）与 `size`，
+  条目当场组装，**不再需要仓库里的 `index.json`**；被限流（403）时第 2/3 源对新版本会 404
+  并如实记档，检查退化成「更新通道没有回应 + 提示用命令行手动升级」，**不会谎称已是最新**。
+- **≤v1.1.5 的老版本**：三个列表源与标签探测照常工作（那些标签里仍有 `releases/` 清单），
+  上面两张表的实测数字就是那个时期的。
+- **下载**仍是三条路依次试：`@<tag>/releases/<file>.tgz` → `@main/releases/<file>.tgz`
+  → **GitHub Release 附件**；新版本前两条必然 404（快速失败），实际由附件供给。
+  **内容由 `sha256` 与产物自证负责**，从哪条路取都不影响安全性（三道校验见 [API-CONTRACT §2.9](API-CONTRACT.md)）。
+  传输层失败才换路；字节都拿到了却哈希不符是篡改信号，直接硬失败。
 
 **两条硬约束**：
 
@@ -172,10 +186,12 @@ jsDelivr 那条路仍然保留并且是下载的主力，因为它不限流、�
 | 立刻 | **v1.1.1**（最新） | 404 → 几分钟后 200 | 只有 1.0.0–1.0.2 | 1.1.0（缓存） |
 | 一小时后 | v1.1.1 | 200 | **仍然只有旧的三个** | 1.1.0（12 小时缓存） |
 
-所以检查逻辑按三层容错写：**三个列表源各自独立成败**（每个都要"版本 + 该版本的清单"双双拿到），
-失败就继续问下一个；期间任何一个给出**明确高于当前**的答案就早退出；
-全部没有更高版本时，再按常规递进探 3 个候选标签（任意标签是按需取的，因此这一层能追上列表的滞后）。
-取最高版本而不是第一个答案——不同源的缓存新鲜度不一致，取高才不会漏更新。
+所以检查逻辑按三层容错写：**三个列表源各自独立成败**（第 1 源附件元数据齐了就直接成条目；
+第 2/3 源要"版本 + 该版本的清单"双双拿到），失败就继续问下一个；期间任何一个给出
+**明确高于当前**的答案就早退出；全部没有更高版本时，再按常规递进探 3 个候选标签
+（任意标签是按需取的，这一层能追上列表的滞后——但 v1.1.6 起新版本的标签里没有清单，
+探测会 404 并记档，只为 ≤v1.1.5 的老标签补位）。取最高版本而不是第一个答案——
+不同源的缓存新鲜度不一致，取高才不会漏更新。
 下载同理：`@<tag>/…` → `@main/…` → Release 附件，**内容由 `sha256` 与产物自证负责**。
 
 这套三层容错是发布后立刻实测撞出来的（v1.1.0 时第一个源半残就让整次检查失败了），修在 v1.1.1；

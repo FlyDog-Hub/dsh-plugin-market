@@ -155,10 +155,11 @@ DeepSeek Harness 的插件就是 Cordis 插件，Web GUI 的插件还必须额�
 - **不做重启助手**：需要重启才生效的变更会如实显示 `application: 'restart-required'`，
   由用户自己重启（官方 dsh-market 的 detached restart helper 明确不在本次范围内）。
   自更新装完后同理：按钮回到「插件市场更新」，不会假装已经生效。
-- **自更新的信任锚是 CDN 上的那份清单，不是独立签名**：路径形状 + `sha256` + 产物自证三道校验
-  能挡住损坏、截断与单点替换，但挡不住「CDN 与 `index.json` 一起被换」。要有那个能力就得引入
+- **自更新的信任锚是清单哈希，不是独立签名**：路径形状 + `sha256` + 产物自证三道校验
+  （新版本 `sha256` 取自 GitHub 附件 `digest`，≤v1.1.5 走 `releases/index.json`）
+  能挡住损坏、截断与单点替换，但挡不住「清单与产物一起被换」。要有那个能力就得引入
   独立签名密钥（本次不做，已写进 [API-CONTRACT §2.9](API-CONTRACT.md) 而不是含糊过去）。
-- **自更新通道依赖仓库保持 public**：转 private 后 jsDelivr 读不到文件、GitHub API 对未鉴权请求回 404，
+- **自更新通道依赖仓库保持 public**：转 private 后 GitHub API 对未鉴权请求回 404（jsDelivr 同样读不到），
   按钮会变成「更新通道没有回应」；同时别人也装不上这个插件（Release 附件要鉴权）。
 - **`verify/ui-check.ps1`（真实浏览器）不在发布门禁里**：它要起宿主进程 + headless Edge，
   慢且依赖本机有浏览器。它作为「改客户端半之后手动跑一次」的步骤写进了

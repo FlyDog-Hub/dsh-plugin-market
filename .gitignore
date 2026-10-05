@@ -9,8 +9,13 @@ verify/logs/
 # 本机运行产物
 dsh-usage-boot.log
 
-# 发布产物（由 scripts/release.ps1 生成，作为 GitHub Release 附件分发，不入库）
+# 发布产物（-CiPack 在 GitHub Actions 的工作区里生成，作为 Release 附件分发，用完即弃）
+# 本地任何模式都不打包；dist/ 即使被手动弄出来也不入库
 dist/
+
+# releases/ 目录已从仓库移除（回退/旧版安装一律从 GitHub Release 附件下载）。
+# 这条 ignore 是防回归：谁再往这里写 tarball/清单，会先撞上它而不是悄悄进版本库
+releases/
 
 # 编辑器和系统噪声
 .vscode/

@@ -96,7 +96,7 @@ dsh plugin --profile web add deepseek-harness-market
 - 安装 / 卸载 / 启用 / 停用只走宿主 `pluginManager`——与 `dsh plugin add` 同一条路径、同一套构建脚本审批规则。
 - 写操作只收**同源 POST**（64 KiB 上限），不接受跨源、不拿 GET 改状态。
 - 市场**拒绝卸载自己**。
-- 自更新的信任锚是 CDN 上的清单（路径形状 + `sha256` + 产物自证三道校验）：挡损坏、截断与单点替换，挡不住「CDN 与清单一起被换」——如实写在 [API-CONTRACT §2.9](docs/API-CONTRACT.md)，不冒充独立签名。
+- 自更新的信任锚是清单哈希（路径形状 + `sha256` + 产物自证三道校验）：新版本由 GitHub 附件 `digest` 直接给出 `sha256`，老版本走 `index.json`；挡损坏、截断与单点替换，挡不住「清单与产物一起被换」——如实写在 [API-CONTRACT §2.9](docs/API-CONTRACT.md)，不冒充独立签名。
 
 [设计与安全决定](docs/PLUGIN-MARKET.md) · [已知限制](docs/PLUGIN-MARKET.md#7-已知限制与后续工作) · [接口契约](docs/API-CONTRACT.md)
 
@@ -106,10 +106,11 @@ dsh plugin --profile web add deepseek-harness-market
 # 真实浏览器 e2e：起 scratch 宿主 + headless Edge，驱动真引擎断言并落截图
 pwsh -File verify\ui-check.ps1
 
-# 发布门禁：node --check + verify/*.test.mjs 全跑 + 打包（不改版本、不发布）
+# 发布门禁：node --check + verify/*.test.mjs 全跑（不改版本、不打包、不发布）
 pwsh -File scripts\release.ps1 -LocalOnly
 
-# 正式发版：门禁 → 递增 → 打包 → 打标签 → GitHub Release → npm
+# 正式发版（本地只到这里）：门禁 → 递增 → 提交 → 打标签 → 推送
+# 推上去的标签触发 GitHub Actions：打包 → GitHub Release 附件 → npm（回退也从附件下载）
 pwsh -File scripts\release.ps1 -Bump patch
 ```
 

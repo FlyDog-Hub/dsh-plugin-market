@@ -1,0 +1,77 @@
+name: Pack and Release
+
+# 打包与发布都在 CI 做——本地从此不产生任何打包产物，也不消耗 gh / npm token：
+#   标签推送 → 门禁（release.ps1 内跑全部 verify/*.test.mjs）→ pnpm pack
+#   → 创建 GitHub Release 并传 tarball + version.json → 发布 npm。
+#
+# 本地只剩轻量五步：门禁 → 递增 → 提交 → 打标签 → 推送（scripts/release.ps1 -Bump patch）。
+# 回退 / 旧版安装一律从 GitHub Release 附件下载（releases/ 目录已从仓库移除）。
+#
+# workflow_dispatch 用于补跑 / 回填：按 package.json 的版本找到对应标签重新打包；
+# Release 已存在则幂等补传附件（--clobber），npm 已有该版本则跳过。
+# （release 事件不会因 GITHUB_TOKEN 创建的 Release 而触发其它 workflow，所以 npm
+#   发布放在本文件的 publish-npm job 里；publish-npm.yml 保留作手动补发通道。）
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  pack:
+    # release.ps1 带 Windows 路径拼接，门禁与打包都在 Windows runner 上跑。
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # 门禁的可重入检查与 build 后缀（提交数.短哈希）都要全历史 + 标签。
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: 安装 pnpm（CI 上没有 DSH 运行时，release.ps1 会用 PATH 上的 pnpm）
+        run: npm install -g pnpm@latest
+
+      - name: 门禁 → 打包 → 创建 Release
+        run: pwsh -NoProfile -File scripts/release.ps1 -CiPack
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+  publish-npm:
+    needs: pack
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: 读出要发布的包与版本
+        id: spec
+        run: |
+          SPEC=$(node -p "const p=require('./plugin-market/package.json'); p.name + '@' + p.version")
+          echo "spec=$SPEC" >> "$GITHUB_OUTPUT"
+          echo "目标：$SPEC"
+
+      - name: 该版本已在 npm 则跳过（补跑幂等）
+        id: guard
+        run: |
+          if npm view "${{ steps.spec.outputs.spec }}" version >/dev/null 2>&1; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "${{ steps.spec.outputs.spec }} 已在 npm，跳过"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish to npm
+        if: steps.guard.outputs.skip == 'false'
+        working-directory: plugin-market
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

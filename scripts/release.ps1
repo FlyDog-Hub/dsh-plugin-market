@@ -1,23 +1,29 @@
-﻿# release.ps1 —— 按固定顺序打一个正式版本：门禁 → 递增 → 打包 → 打标签 → 发布。
+﻿# release.ps1 —— 版本与门禁在本地，打包与发布在 GitHub Actions。
 #
 # 版本号规则见 docs/RELEASING.md：
 #   versionName = MAJOR.MINOR.PATCH（严格 SemVer，包/Git 标签/Release 都用它）
 #   versionCode = MAJOR*10000 + MINOR*100 + PATCH（单调递增整数）
 #   构建标识   = +提交数.短哈希（只写进发布说明与 dist/version.json）
 #
-# 用法：
-#   pwsh -File scripts\release.ps1                     # 首个版本 1.0.0（不递增）
-#   pwsh -File scripts\release.ps1 -Bump patch|minor|major
-#   pwsh -File scripts\release.ps1 -LocalOnly          # 只打包，不改版本/不提交/不发布
-#   pwsh -File scripts\release.ps1 -SkipPush           # 打包 + 提交 + 打标签，但不推送不建 Release
+# 本地路径（不产生任何打包产物，不消耗 gh / npm token）：
+#   pwsh -File scripts\release.ps1 -Bump patch|minor|major   # 门禁 → 递增 → 提交 → 打标签 → 推送
+#   pwsh -File scripts\release.ps1 -LocalOnly                # 只跑门禁（不改版本、不留产物、不发布）
+#   pwsh -File scripts\release.ps1 -SkipPush                 # 递增 + 提交 + 打标签，但不推送
+#
+# CI 路径（.github/workflows/pack-release.yml，标签推送触发）：
+#   pwsh -File scripts\release.ps1 -CiPack                   # 门禁 → 打包 → 创建 GitHub Release 并传附件
+#   npm 发布由同一 workflow 的 publish-npm job 接手。
+# 回退 / 旧版安装一律从 GitHub Release 附件下载（releases/ 目录已从仓库移除）。
 
 [CmdletBinding()]
 param(
   [ValidateSet('none', 'patch', 'minor', 'major')]
   [string]$Bump = 'none',
   [string]$NotesFile,
+  [string]$Tag,
   [switch]$LocalOnly,
-  [switch]$SkipPush
+  [switch]$SkipPush,
+  [switch]$CiPack
 )
 
 $ErrorActionPreference = 'Stop'
@@ -25,11 +31,25 @@ $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $pkgDir = Join-Path $root 'plugin-market'
 $manifestPath = Join-Path $pkgDir 'package.json'
 $distDir = Join-Path $root 'dist'
-$node = Join-Path $env:DSH_HOME 'dsh-runtimes\dsh-primary-runtime\dependencies\node\bin\node.exe'
-if (-not (Test-Path $node)) { $node = (Get-Command node -ErrorAction SilentlyContinue).Source }
+# node：本机优先 DSH 自带运行时；CI 上没有 DSH_HOME，退回 PATH（workflow 负责装 node）。
+# 注意 $env:DSH_HOME 未设置时是 $null，Join-Path 会直接抛错——先判环境变量再拼路径。
+$node = $null
+if ($env:DSH_HOME) { $node = Join-Path $env:DSH_HOME 'dsh-runtimes\dsh-primary-runtime\dependencies\node\bin\node.exe' }
+if (-not $node -or -not (Test-Path $node)) { $node = (Get-Command node -ErrorAction SilentlyContinue).Source }
 if (-not $node) { throw '找不到 node.exe' }
-$pnpm = Join-Path $env:DSH_HOME 'dsh-runtimes\dsh-primary-runtime\dependencies\pnpm\bin\pnpm.mjs'
-if (-not (Test-Path $pnpm)) { throw "找不到 pnpm：$pnpm" }
+
+# pnpm 只有打包那一步才用（门禁不需要），所以到打包时再解析——门禁跑在没有 pnpm 的机器上
+# 也不该被它拦住。本机用 DSH 自带的 pnpm.mjs（喂给 node 跑）；CI 上退回 PATH 上的 pnpm，
+# 返回 CommandInfo 让 PowerShell 自己挑 .cmd/.ps1（npm -g 装出来的命令带多个扩展名，
+# 存字符串路径可能挑中无法直接执行的那一个）。
+function Resolve-Pnpm {
+  $mjs = $null
+  if ($env:DSH_HOME) { $mjs = Join-Path $env:DSH_HOME 'dsh-runtimes\dsh-primary-runtime\dependencies\pnpm\bin\pnpm.mjs' }
+  if ($mjs -and (Test-Path $mjs)) { return @{ Mjs = $mjs } }
+  $cmd = Get-Command pnpm -ErrorAction SilentlyContinue
+  if (-not $cmd) { throw '找不到 pnpm：既没有 DSH 运行时，PATH 上也没有（CI 里 workflow 会先装 pnpm）' }
+  return @{ Cmd = $cmd }
+}
 
 function Step([string]$text) { Write-Host ''; Write-Host "==== $text" -ForegroundColor Cyan }
 function Ok([string]$text) { Write-Host "  ✓ $text" -ForegroundColor Green }
@@ -71,6 +91,28 @@ function Get-VersionCode([int[]]$Parts) {
   return $Parts[0] * 10000 + $Parts[1] * 100 + $Parts[2]
 }
 
+# ── CI（-CiPack）：先解析标签并检出标签内容，门禁与打包都以标签为准 ──
+if ($CiPack) {
+  if ($env:GITHUB_ACTIONS -ne 'true') {
+    throw '-CiPack 只在 GitHub Actions 里跑——本地打包会留产物、还消耗 gh token；本地验证请用 -LocalOnly（只跑门禁）。'
+  }
+  $refName = $env:GITHUB_REF_NAME
+  if ($refName -match '^v\d+\.\d+\.\d+$') {
+    $Tag = $refName            # 标签推送：打的就是这个标签
+  } elseif (-not $Tag) {
+    # 手动补跑（分支上触发）：从包版本推导标签（例如 package.json=1.1.5 → v1.1.5）
+    $Tag = "v$((Get-Content $manifestPath -Raw | ConvertFrom-Json).version)"
+  }
+  Push-Location $root
+  try {
+    & git rev-parse --verify --quiet "refs/tags/$Tag" | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "标签 $Tag 不存在——打包的对象必须是已推送的标签" }
+    # 打包内容必须是标签那一份，不是分支工作区的猜测（手动补跑时两者可能不同）。
+    if ((Invoke-Native 'git' @('checkout', '--detach', $Tag)) -ne 0) { throw "检出标签 $Tag 失败" }
+    Ok "已检出标签 $Tag（门禁与打包都跑它）"
+  } finally { Pop-Location }
+}
+
 # ── 1. 读并校验当前版本 ─────────────────────────────────────────────
 Step '1/5 读取并校验版本'
 $manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
@@ -87,6 +129,12 @@ $version = "$major.$minor.$patch"
 $versionCode = Get-VersionCode @($major, $minor, $patch)
 if ($version -ne $current) { Ok "递增后 versionName=$version versionCode=$versionCode" }
 else { Ok '不递增（首个版本或 -Bump none）' }
+
+if ($CiPack) {
+  if ($Bump -ne 'none') { throw '-CiPack 不做递增——版本号在本地 -Bump 时写好、打成标签，CI 只负责打包发布' }
+  if ($Tag -ne "v$version") { throw "标签 $Tag 与 package.json 的版本 $version 不一致" }
+  Ok "CI 模式：标签 $Tag 与包版本一致"
+}
 
 # ── 2. 门禁 ─────────────────────────────────────────────────────────
 Step '2/5 门禁（任一失败即中止）'
@@ -178,7 +226,7 @@ if (Test-Path $guardTest) {
 
 Push-Location $root
 try {
-  if (-not $LocalOnly) {
+  if (-not $LocalOnly -and -not $CiPack) {
     # 只要求「发布面」干净：plugin-market / docs / scripts / 根文件。
     # 并行进行的验收脚本改动（verify/**）既不进发布物、也不进本次提交，只警告不阻塞——
     # 否则一场正在跑的验收会把发布卡死。
@@ -194,99 +242,101 @@ try {
   }
 } finally { Pop-Location }
 
-# ── 3. 递增并打包 ───────────────────────────────────────────────────
-Step '3/5 写入版本并打包'
+# ── 3. 本地只写版本；打包只在 CI（-CiPack）发生 ─────────────────────
+if ($CiPack) {
+  Step 'CI 打包（产物只留在 CI 工作区，本地仓库永远不留 tarball）'
+  New-Item -ItemType Directory -Force -Path $distDir | Out-Null
+  Get-ChildItem $distDir -Filter '*.tgz' -ErrorAction SilentlyContinue | Remove-Item -Force
+  Push-Location $pkgDir
+  try {
+    $pnpm = Resolve-Pnpm
+    if ($pnpm.Mjs) { & $node $pnpm.Mjs pack --pack-destination $distDir | Out-Null }
+    else { & $pnpm.Cmd pack --pack-destination $distDir | Out-Null }
+    if ($LASTEXITCODE -ne 0) { throw 'pnpm pack 失败' }
+  } finally { Pop-Location }
+  $tgz = Join-Path $distDir "$($manifest.name)-$version.tgz"
+  if (-not (Test-Path $tgz)) { throw "没有生成预期的 tarball：$tgz" }
+  Ok ("tarball: " + (Split-Path $tgz -Leaf) + "（" + [math]::Round((Get-Item $tgz).Length / 1KB) + " KB）")
+
+  Push-Location $root
+  try {
+    $commits = (& git rev-list --count HEAD).Trim()
+    $sha = (& git rev-parse --short HEAD).Trim()
+  } finally { Pop-Location }
+  $versionJson = [ordered]@{
+    name         = $manifest.name
+    version      = $version
+    versionCode  = $versionCode
+    build        = "+$commits.$sha"
+    commits      = [int]$commits
+    sha          = $sha
+    builtAt      = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+  }
+  $versionJson | ConvertTo-Json | Set-Content (Join-Path $distDir 'version.json') -Encoding UTF8
+  Ok ("dist/version.json: version=$version versionCode=$versionCode build=+$commits.$sha")
+
+  Step 'CI 创建 GitHub Release（附件是回退与旧版安装的唯一下载源）'
+  # 本机路径只在有 LOCALAPPDATA 的机器上存在；CI 上没有就直接找 PATH 里的 gh。
+  $gh = $null
+  if ($env:LOCALAPPDATA) { $gh = Join-Path $env:LOCALAPPDATA 'dsh-tools\gh\bin\gh.exe' }
+  if (-not $gh -or -not (Test-Path $gh)) { $gh = (Get-Command gh -ErrorAction SilentlyContinue).Source }
+  if (-not $gh) { throw '找不到 gh CLI，无法创建 Release' }
+
+  $notes = ''
+  if ($NotesFile) { $notes = Get-Content (Join-Path $root $NotesFile) -Raw }
+  if (-not $notes) {
+    $changelog = Get-Content (Join-Path $pkgDir 'CHANGELOG.md') -Raw
+    $m = [regex]::Match($changelog, "(?ms)^##\s+$([regex]::Escape($version))\s*$\s*(.*?)(?=^##\s|\z)")
+    if ($m.Success) { $notes = $m.Groups[1].Value.Trim() }
+  }
+  if (-not $notes) { $notes = "首个正式版本 $version。" }
+  $notes = $notes + "`n`n---`n`n- versionName ``$version`` / versionCode ``$versionCode`` / build ``+$commits.$sha```n- 安装：``dsh plugin --profile web add <本页附件 $($manifest.name)-$version.tgz>``（发布到 npm 后可直接 ``add $($manifest.name)``）`n- 回退 / 旧版：从本页附件下载对应版本的 tgz`n- 变更与验收细节见仓库 docs/ 与 verify/REPORT.md"
+  # Release notes 用文件传递：Windows 下把多行字符串直接当命令行参数会被截断/转义。
+  $notesPath = Join-Path $distDir "release-notes-v$version.md"
+  [System.IO.File]::WriteAllText($notesPath, $notes, [System.Text.UTF8Encoding]::new($false))
+
+  $versionJsonPath = Join-Path $distDir 'version.json'
+  $releaseCode = Invoke-Native $gh @(
+    'release', 'create', "v$version", $tgz, $versionJsonPath,
+    '--title', "v$version", '--notes-file', $notesPath
+  )
+  if ($releaseCode -ne 0) {
+    # 重跑 / 补跑的常见情况：Release 已在——补传附件（--clobber 幂等），而不是失败。
+    & $gh release view "v$version" 2>&1 | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw 'gh release create 失败' }
+    Ok "Release v$version 已存在，补传附件（--clobber）"
+    if ((Invoke-Native $gh @('release', 'upload', "v$version", $tgz, $versionJsonPath, '--clobber')) -ne 0) {
+      throw 'gh release upload 失败'
+    }
+  } else {
+    Ok "GitHub Release v$version 已创建"
+  }
+  Write-Host ''
+  Write-Host "CI 打包完成：v$version（versionCode=$versionCode, build=+$commits.$sha）"
+  exit 0
+}
+
+Step '3/5 写入版本'
 if (-not $LocalOnly -and $version -ne $current) {
   $raw = Get-Content $manifestPath -Raw
   $updated = $raw -replace '"version"\s*:\s*"[^"]+"', ('"version": "' + $version + '"')
   [System.IO.File]::WriteAllText($manifestPath, $updated, [System.Text.UTF8Encoding]::new($false))
   Ok "package.json version → $version"
 }
-New-Item -ItemType Directory -Force -Path $distDir | Out-Null
-Get-ChildItem $distDir -Filter '*.tgz' -ErrorAction SilentlyContinue | Remove-Item -Force
-Push-Location $pkgDir
-try {
-  & $node $pnpm pack --pack-destination $distDir | Out-Null
-  if ($LASTEXITCODE -ne 0) { throw 'pnpm pack 失败' }
-} finally { Pop-Location }
-$tgz = Join-Path $distDir "$($manifest.name)-$version.tgz"
-if (-not (Test-Path $tgz)) { throw "没有生成预期的 tarball：$tgz" }
-Ok ("tarball: " + (Split-Path $tgz -Leaf) + "（" + [math]::Round((Get-Item $tgz).Length / 1KB) + " KB）")
-
-Push-Location $root
-try {
-  $commits = (& git rev-list --count HEAD).Trim()
-  $sha = (& git rev-parse --short HEAD).Trim()
-} finally { Pop-Location }
-$versionJson = [ordered]@{
-  name         = $manifest.name
-  version      = $version
-  versionCode  = $versionCode
-  build        = "+$commits.$sha"
-  commits      = [int]$commits
-  sha          = $sha
-  builtAt      = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
-}
-$versionJson | ConvertTo-Json | Set-Content (Join-Path $distDir 'version.json') -Encoding UTF8
-Ok ("dist/version.json: version=$version versionCode=$versionCode build=+$commits.$sha")
-
 if ($LocalOnly) {
   Write-Host ''
-  Write-Host 'LocalOnly：到此为止（未改版本、未提交、未打标签、未发布）。'
+  Write-Host 'LocalOnly：门禁通过，到此为止（不改版本、不打包、不提交、不发布——打包与发布由 GitHub Actions 完成）。'
   exit 0
 }
 
-# ── 3.5 写入 releases/：CDN 分发目录 ────────────────────────────────
-# 市场的「检查更新」从 jsDelivr 读这里，所以产物必须进**版本提交**、从而进标签：
-# jsDelivr 只能按标签/提交取仓库里的文件，取不到 GitHub Release 附件，而本机直连 github.com
-# 需要代理、镜像站又不可靠，CDN 是唯一稳定可达的通道（见 docs/RELEASING.md §4.4）。
-# index.json 给客户端两样东西：最新版本号，以及每个版本 tarball 的 sha256（下载后校验）。
-Step '3.5/5 写入 releases/（CDN 分发目录）'
-$releasesDir = Join-Path $root 'releases'
-New-Item -ItemType Directory -Force -Path $releasesDir | Out-Null
-$tgzName = Split-Path $tgz -Leaf
-$tgzTarget = Join-Path $releasesDir $tgzName
-Copy-Item $tgz $tgzTarget -Force
-$hash = (Get-FileHash $tgzTarget -Algorithm SHA256).Hash.ToLowerInvariant()
-$bytes = (Get-Item $tgzTarget).Length
-$indexPath = Join-Path $releasesDir 'index.json'
-if (Test-Path $indexPath) { $index = Get-Content $indexPath -Raw | ConvertFrom-Json } else { $index = $null }
-$entry = [ordered]@{
-  version     = $version
-  tag         = "v$version"
-  versionCode = $versionCode
-  build       = "+$commits.$sha"
-  tarball     = "releases/$tgzName"
-  sha256      = $hash
-  bytes       = [int]$bytes
-  releasedAt  = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
-}
-$versions = @()
-if ($index -ne $null) { foreach ($v in @($index.versions)) { if ($v.version -ne $version) { $versions += $v } } }
-$versions += [pscustomobject]$entry
-# 降序保存：客户端只取 latest，顺序是给人看的。
-$versions = @($versions | Sort-Object -Property versionCode -Descending)
-$latest = $versions[0]
-$indexOut = [ordered]@{
-  name      = $manifest.name
-  channel   = 'jsdelivr'
-  repo      = 'Winnie-0721/dsh-plugin-market'
-  updatedAt = $entry.releasedAt
-  latest    = $latest
-  versions  = $versions
-}
-# .gitattributes 把 *.json 归一成 LF；这里直接写成 LF，免得每次发布都刷一条
-# "CRLF will be replaced by LF" 的警告（那个警告看着像失败，实际只是行尾说明）。
-$indexJson = ($indexOut | ConvertTo-Json -Depth 6) -replace "`r`n", "`n"
-[System.IO.File]::WriteAllText($indexPath, $indexJson, [System.Text.UTF8Encoding]::new($false))
-Ok "releases/$tgzName（$([math]::Round($bytes / 1KB)) KB，sha256 $($hash.Substring(0, 12))…）"
-Ok "releases/index.json：latest=$($latest.version)（共 $($versions.Count) 个版本）"
+# （不再写 releases/：tarball 只挂 GitHub Release 附件——回退与旧版安装从那里下载，
+#   仓库里从此不留任何打包产物，index.json/jsDelivr 那条 CDN 路随之下线。）
 
 # ── 4. 提交 + 标签 ──────────────────────────────────────────────────
 Step '4/5 提交并打标签'
 Push-Location $root
 try {
-  & git add plugin-market/package.json releases
+  & git add plugin-market/package.json
   $staged = @(& git diff --cached --name-only | Where-Object { $_ })
   if ($staged.Count -gt 0) {
     & git commit -q -m "chore(release): v$version"
@@ -305,11 +355,11 @@ try {
     # 版本号被重用（标签不在历史里）或打包内容被改（改了就得发新版本号）。
     & git merge-base --is-ancestor $tag HEAD
     if ($LASTEXITCODE -ne 0) { throw "标签 $tag 已存在且不在当前历史里，版本号不可重用" }
-    & git diff --quiet $tag HEAD -- plugin-market releases
+    & git diff --quiet $tag HEAD -- plugin-market
     if ($LASTEXITCODE -ne 0) {
-      throw "自 $tag 以来 plugin-market/ 或 releases/ 有改动——发布内容变了就必须递增版本号（-Bump patch|minor|major），不能复用 $version"
+      throw "自 $tag 以来 plugin-market/ 有改动——发布内容变了就必须递增版本号（-Bump patch|minor|major），不能复用 $version"
     }
-    Ok "标签 $tag 已在历史中且 plugin-market/、releases/ 未变，继续（可重入）"
+    Ok "标签 $tag 已在历史中且 plugin-market/ 未变，继续（可重入）"
   } else {
     & git tag -a $tag -m "v$version"
     if ($LASTEXITCODE -ne 0) { throw 'git tag 失败' }
@@ -317,11 +367,11 @@ try {
   }
 } finally { Pop-Location }
 
-# ── 5. 推送 + GitHub Release ────────────────────────────────────────
-Step '5/5 推送并创建 Release'
+# ── 5. 推送（打包与 Release 由 Actions 接手）─────────────────────────
+Step '5/5 推送'
 if ($SkipPush) {
-  Write-Host 'SkipPush：未推送、未创建 Release。'
-  Write-Host "  手动推送：git push --follow-tags"
+  Write-Host 'SkipPush：未推送。'
+  Write-Host '  手动推送：git push --follow-tags'
   exit 0
 }
 Push-Location $root
@@ -331,35 +381,6 @@ try {
   }
   Ok '已推送提交与标签'
 } finally { Pop-Location }
-
-$gh = Join-Path $env:LOCALAPPDATA 'dsh-tools\gh\bin\gh.exe'
-if (-not (Test-Path $gh)) { $gh = (Get-Command gh -ErrorAction SilentlyContinue).Source }
-if (-not $gh) { throw '找不到 gh CLI，无法创建 Release' }
-
-$notes = ''
-if ($NotesFile) { $notes = Get-Content (Join-Path $root $NotesFile) -Raw }
-if (-not $notes) {
-  $changelog = Get-Content (Join-Path $pkgDir 'CHANGELOG.md') -Raw
-  $m = [regex]::Match($changelog, "(?ms)^##\s+$([regex]::Escape($version))\s*$\s*(.*?)(?=^##\s|\z)")
-  if ($m.Success) { $notes = $m.Groups[1].Value.Trim() }
-}
-if (-not $notes) { $notes = "首个正式版本 $version。" }
-$notes = $notes + "`n`n---`n`n- versionName ``$version`` / versionCode ``$versionCode`` / build ``+$commits.$sha```n- 安装：``dsh plugin --profile web add <本页附件 $($manifest.name)-$version.tgz>``（发布到 npm 后可直接 ``add $($manifest.name)``）`n- 目录源以 npm 镜像优先（实测 289ms）对官方源（本机直连 25–93s 超时）`n- 变更与验收细节见仓库 docs/ 与 verify/REPORT.md"
-# Release notes 用文件传递：Windows 下把多行字符串直接当命令行参数会被截断/转义。
-$notesPath = Join-Path $distDir "release-notes-v$version.md"
-[System.IO.File]::WriteAllText($notesPath, $notes, [System.Text.UTF8Encoding]::new($false))
-
-$releaseCode = Invoke-Native $gh @(
-  'release', 'create', "v$version", $tgz, (Join-Path $distDir 'version.json'),
-  '--title', "v$version", '--notes-file', $notesPath
-)
-if ($releaseCode -ne 0) {
-  # 重跑一次常见情况：Release 已存在（上一次只是输出被读失败），那就补传资产而不是失败。
-  & $gh release view "v$version" 2>&1 | Out-Null
-  if ($LASTEXITCODE -ne 0) { throw 'gh release create 失败' }
-  Ok "Release v$version 已存在，跳过创建"
-} else {
-  Ok "GitHub Release v$version 已创建"
-}
 Write-Host ''
-Write-Host "发布完成：v$version（versionCode=$versionCode, build=+$commits.$sha）"
+Write-Host "已推送 v$version。标签会触发 GitHub Actions「Pack and Release」：门禁 → 打包 → 创建 Release 附件 → 发布 npm。"
+Write-Host '  https://github.com/Winnie-0721/dsh-plugin-market/actions/workflows/pack-release.yml'

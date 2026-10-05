@@ -217,10 +217,14 @@ Query 参数（全部可选，未知参数忽略）：
 - `installable` = 有更新 **且** 拿到了可校验的产物（`url` + `sha256` 都在）；假时客户端不出「更新到 x.y.z」，只提示。
 - `channel` 是最终采纳的那个源 id：`github-release` → `jsdelivr-tags` → `jsdelivr-index` → `tag-probe`（顺序即优先级：最权威/最新鲜的排前面）。
   第一源是 GitHub Releases API（权威且最新，代价是匿名 60 次/小时/IP）；被限流返回 403 时**只是这个源失败**，不影响结论。
-- **每个源必须「给出候选版本」且「拿得到那一版的 `releases/index.json`」都成功才算成功**，
+- **每个源的「成功」定义**：`github-release` 自带附件元数据（`digest`/`size`）时**当场组装条目**、不查清单；
+  其余源必须「给出候选版本」且「拿得到那一版的 `releases/index.json`」都成功才算成功，
   任何一个源半残都要继续问下一个（实测：刚推完标签时 Data API 的版本列表还是旧的，
-  而旧版本没有 `releases/` 目录 → 清单 404）。有一个明确高于 `current` 的答案就早退出；
+  而旧标签没有 `releases/` 目录 → 清单 404）。有一个明确高于 `current` 的答案就早退出；
   没有更新时问完全部源、取**最高**那一个（不同源的 CDN 缓存新鲜度不一致，取最高才不会漏更新）。
+- **`releases/` 目录自 v1.1.6 起已从仓库移除**（打包产物只挂 GitHub Release 附件）：新版本的第 1 源
+  由附件 `digest` 直接给出 `sha256`；第 2/3 源与 `tag-probe` 对新版本会 404 并如实记进 `diagnostic`，
+  仍能照常服务 ≤v1.1.5 的老标签。
 - **`tag-probe`：列表源全都滞后时的有界兜底**。实测 Data API 的版本列表数小时不更新、
   `@main` 的清单被缓存 12 小时，而**任意标签是按需取的**——刚推完 `@v<tag>/…` 立刻 200。
   所以列表都说「没有更高版本」时，按 `MAJOR.MINOR.PATCH` 的常规递进探三个候选标签
@@ -245,11 +249,11 @@ Query 参数（全部可选，未知参数忽略）：
   - `self-update-unavailable`：拿不到可用产物或版本号；
   - `manager-unavailable`：宿主没有 `pluginManager`。
 
-**信任链（三道，缺一不可）**：① `index.json` 里的 tarball 必须是 `releases/*.tgz` 且拼在固定 CDN 前缀后（写别的 URL 一律不采信）；② 字节的 `sha256` 必须与清单一致；③ 解开 tarball 读 `package/package.json`，包名与版本必须与预期一致。
+**信任链（三道，缺一不可）**：① 条目里的 tarball 必须是 `releases/*.tgz` 形状的相对路径（写别的 URL 一律不采信；v1.1.6 起条目由 GitHub 附件元数据组装，路径形状仍是同一约定）；② 字节的 `sha256` 必须与清单一致（清单 = 老路的 `index.json`，或 GitHub 附件的 `digest`）；③ 解开 tarball 读 `package/package.json`，包名与版本必须与预期一致。
 第 ② 道不防「CDN 与清单一起被换」——那需要独立签名密钥，**目前没有**，这是已知限制而不是已解决的问题。
 
 **取字节的三条路，按顺序试**：`@<tag>/releases/<file>.tgz` → `@main/releases/<file>.tgz` → GitHub Release 附件（`/releases/download/<tag>/<name>-<version>.tgz`）。
-前两条覆盖 CDN 的标签索引延迟，第三条在 CDN 不可达时顶上。因为第 ② 道校验的是**内容**，从哪条路取都不影响安全性。
+前两条覆盖 CDN 的标签索引延迟（v1.1.6 起仓库不再存文件，新版本上这两条必然 404、快速失败，实际由第三条供给；顺序保留是为了 ≤v1.1.5 的老版本仍走 CDN 缓存）。因为第 ② 道校验的是**内容**，从哪条路取都不影响安全性。
 只有**传输层失败**（404/超时/断流）才换下一条；一旦**拿到了完整字节**而哈希不符，那是篡改信号：直接以 `self-update-integrity` 失败，**不换来源重试**。
 
 ## 3. 目录抓取策略（host）

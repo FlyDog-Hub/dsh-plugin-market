@@ -1,10 +1,19 @@
 name: Publish to npm
 
+# 只在 Release 发布时触发——版本号由 release.ps1 独家管理，这里绝不 bump：
+# npm version patch 会破坏 versionCode 归零纪律，且同版本重发会被 npm 拒。
+# 注意：由 GITHUB_TOKEN 创建的 Release **不会**触发任何 workflow（防递归），所以
+# Actions 打包发的版本走 pack-release.yml 的 publish-npm job；本文件用于人工建
+# Release 与手动补发（gh workflow run "Publish to npm"）。
 on:
   release:
     types: [published]
+  # 手动触发：补发 / 重试都走这里。
   workflow_dispatch:
 
+# id-token: write = npm Trusted Publishing（OIDC）：在 npmjs.com 给本包添加
+# Trusted publisher（repository=本仓库、workflow=本文件名）后，publish 不再需要 NPM_TOKEN。
+# 若改回 token 发布：给 publish 步骤加回 env: NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}。
 permissions:
   contents: read
   id-token: write
@@ -12,6 +21,10 @@ permissions:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        # package.json 在 plugin-market/ 子目录（在根目录跑会 ENOENT）。
+        working-directory: plugin-market
     steps:
       - uses: actions/checkout@v4
 
@@ -20,10 +33,10 @@ jobs:
           node-version: '22.14.0'
           registry-url: 'https://registry.npmjs.org'
 
+      # OIDC 要求 npm ≥ 11.5.1（Node 自带的 npm 不够新），先升到最新。
+      # 本包无依赖、无构建：不跑 npm ci（没有 package-lock.json 会直接失败），
+      # checkout 下来就是发布内容。
       - run: npm install -g npm@latest
-      - run: npm ci
 
-      # 若你取消了 "Allow npm publish" 勾选，用下面这行：
-      - run: npm stage publish
-      # 若保留了勾选，改用：
-      # - run: npm publish --access public
+      - name: Publish to npm
+        run: npm publish --access public
