@@ -5,6 +5,9 @@ name: Publish to npm
 on:
   release:
     types: [created]
+  # 手动触发：workflow 文件晚于 Release 创建时，release 事件不会重放，
+  # 补发/重试都走这里（gh workflow run "Publish to npm"）。
+  workflow_dispatch:
 
 jobs:
   publish:
