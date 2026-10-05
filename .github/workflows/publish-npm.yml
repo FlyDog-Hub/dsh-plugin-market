@@ -31,7 +31,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22.14.0'
-          registry-url: 'https://registry.npmjs.org'
+          # 故意不写 registry-url：npmjs 是默认 registry；写它反而会让 setup-node
+          # 注入 NODE_AUTH_TOKEN=github.token（对 npm 无效），可能盖过 OIDC。
 
       # OIDC 要求 npm ≥ 11.5.1（Node 自带的 npm 不够新），先升到最新。
       # 本包无依赖、无构建：不跑 npm ci（没有 package-lock.json 会直接失败），

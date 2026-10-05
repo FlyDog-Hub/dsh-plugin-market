@@ -56,12 +56,14 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22.14.0'
-          registry-url: 'https://registry.npmjs.org'
+          # 故意不写 registry-url：npmjs 就是默认 registry，而 registry-url 会让
+          # setup-node 注入 NODE_AUTH_TOKEN=github.token（对 npm 无效），可能盖过 OIDC。
+          # OIDC 只依赖上面的 id-token: write + npm ≥ 11.5.1。
 
       - name: 读出要发布的包与版本
         id: spec
         run: |
-          SPEC=$(node -p "const p=require('./plugin-market/package.json'); p.name + '@' + p.version)")
+          SPEC=$(node -p "const p=require('./plugin-market/package.json'); p.name + '@' + p.version")
           echo "spec=$SPEC" >> "$GITHUB_OUTPUT"
           echo "目标：$SPEC"
 
