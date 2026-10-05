@@ -68,9 +68,14 @@ CI 段（`.github/workflows/pack-release.yml`，`push: tags: ['v*']` 触发；�
    （`version` / `versionCode` / 提交数 / 短哈希 / 构建时间）——产物只落在 CI 工作区，用完即弃；
 3. `gh release create v<version> dist/*.tgz dist/version.json`：**Release 附件是回退与旧版安装的唯一下载源**；
    Release 已存在时改走 `gh release upload --clobber`（重跑幂等）；
-4. `publish-npm` job：`npm publish --access public`，版本已在 npm 上则跳过；凭据是仓库 secret `NPM_TOKEN`。
-   （`publish-npm.yml` 保留作手动补发——由 GITHUB_TOKEN 创建的 Release 不会触发其它 workflow，
-   这也是 npm 发布必须并进本 workflow 的原因。）
+4. `publish-npm` job：`npm publish --access public`，版本已在 npm 上则跳过；凭据是
+   npm Trusted Publishing（OIDC，job 上 `id-token: write`）——与 `publish-npm.yml` 同一套，
+   前提是在 npmjs.com 给本包添加 Trusted publisher（repository=本仓库 + workflow 文件名，
+   两个 workflow 都加）。npm ≥ 11.5.1 才支持 OIDC，job 里会先 `npm install -g npm@latest`。
+   改回 token 或改用 `npm stage publish`（staged token + 人工 2FA 审批后公开）的位置
+   写在两个 workflow 的注释里。
+   （`publish-npm.yml` 保留作人工建 Release 与手动补发——由 GITHUB_TOKEN 创建的 Release
+   不会触发其它 workflow，这也是 npm 发布必须并进本 workflow 的原因。）
 
 ## 3. 用法
 

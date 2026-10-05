@@ -7,9 +7,12 @@
   `-LocalOnly` 现在只跑门禁、不打包；新增 CI 专用 `-CiPack`（仅 `GITHUB_ACTIONS=true` 放行，
   本地调用直接被拒）。新增 `.github/workflows/pack-release.yml`：标签推送触发（也可
   `workflow_dispatch` 补跑），门禁 → `pnpm pack` → `gh release create`（Release 已存在则
-  `upload --clobber` 幂等补附件）→ `publish-npm` job（版本已在 npm 上则跳过，凭据
-  `secrets.NPM_TOKEN`）。npm 发布必须并进这个 workflow：由 GITHUB_TOKEN 创建的 Release
-  **不会**触发其它 workflow，`publish-npm.yml` 只剩手动补发作用。
+  `upload --clobber` 幂等补附件）→ `publish-npm` job（版本已在 npm 上则跳过；凭据走
+  npm Trusted Publishing（OIDC，`id-token: write`），不再依赖长期 token——对齐 npm 官方
+  2FA-bypass token 弃用时间表：2027 年初直接发布能力将被移除）。npm 发布必须并进这个
+  workflow：由 GITHUB_TOKEN 创建的 Release **不会**触发其它 workflow，`publish-npm.yml`
+  只剩人工建 Release 与手动补发作用（同样的 OIDC 权限，原 `NPM_TOKEN` 方案与
+  `npm stage publish` 人工审批方案写在各自注释里）。
 - **`releases/` 目录从仓库移除，回退一律从 GitHub Release 附件下载**：6 个 tarball 与
   `index.json` 全部 `git rm`，本地 `dist/` 清空——仓库里从此不留任何打包产物，
   旧版安装与回退都指向 Releases 页附件（`releases/download/<tag>/<name>-<version>.tgz>`）。

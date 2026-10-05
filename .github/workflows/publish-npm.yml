@@ -38,5 +38,7 @@ jobs:
       # checkout 下来就是发布内容。
       - run: npm install -g npm@latest
 
+      # 若本包在 npmjs 上启用的是 staged publishing（staged token + 人工 2FA 审批后才公开），
+      # 把下行换成：npm stage publish
       - name: Publish to npm
         run: npm publish --access public

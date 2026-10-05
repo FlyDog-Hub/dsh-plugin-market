@@ -31,7 +31,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: '22.14.0'
 
       - name: 安装 pnpm（CI 上没有 DSH 运行时，release.ps1 会用 PATH 上的 pnpm）
         run: npm install -g pnpm@latest
@@ -44,18 +44,24 @@ jobs:
   publish-npm:
     needs: pack
     runs-on: ubuntu-latest
+    # 与 publish-npm.yml 同一套凭据策略：npm Trusted Publishing（OIDC），不存 token。
+    # 在 npmjs.com 给本包添加 Trusted publisher（repository=本仓库、workflow=本文件名）；
+    # 若要改回 token：删掉 id-token，给发布步骤加回 NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}。
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: '22.14.0'
           registry-url: 'https://registry.npmjs.org'
 
       - name: 读出要发布的包与版本
         id: spec
         run: |
-          SPEC=$(node -p "const p=require('./plugin-market/package.json'); p.name + '@' + p.version")
+          SPEC=$(node -p "const p=require('./plugin-market/package.json'); p.name + '@' + p.version)")
           echo "spec=$SPEC" >> "$GITHUB_OUTPUT"
           echo "目标：$SPEC"
 
@@ -72,6 +78,7 @@ jobs:
       - name: Publish to npm
         if: steps.guard.outputs.skip == 'false'
         working-directory: plugin-market
-        run: npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          # OIDC 要求 npm ≥ 11.5.1（Node 自带的 npm 不够新），先升到最新。
+          npm install -g npm@latest
+          npm publish --access public
