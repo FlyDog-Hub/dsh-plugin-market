@@ -225,8 +225,8 @@ pwsh -File verify/self-update-live.ps1   # 自更新端到端：真的下载 + �
 | 改动位置 | 生效方式 | 实测证据 |
 |---|---|---|
 | **客户端半**（`lib/client.js`） | 宿主按文件元数据算出新的产物 rev 并推给页面，**无需重启、通常也无需刷新** | 改完后线上 bundle 里能读到新代码（`mountStyles` / `style watchdog`），旧符号 `function installStyles` 已消失 |
-| **宿主半**（`lib/index.js` / `catalog*.js` / `http.js` / `self-update.js`） | 需要**重启 DSH 进程** | 加临时标记 → 用 patch 层 `disabled: true` 卸载再还原触发热重载 → 标记不出现、`/plugin-market/status` 的版本仍是旧值 |
-| **自更新装下的新版本** | 同样是**重启 DSH**：装完 `requiresRestart: true`，客户端不谎称已生效 | `apply` 返回 `application: restart-required` + `from/to`；按钮回到「插件市场更新」而不是「已更新」 |
+| **宿主半**（`lib/index.js` / `catalog*.js` / `http.js` / `self-update.js` / `restart*.js`） | 需要**重启 DSH 进程**（v1.1.6 起可直接用市场页的一键重启，见下） | 加临时标记 → 用 patch 层 `disabled: true` 卸载再还原触发热重载 → 标记不出现、`/plugin-market/status` 的版本仍是旧值 |
+| **自更新装下的新版本** | 同样是**重启 DSH**：装完 `requiresRestart: true`，客户端不谎称已生效，但会给出一键重启 | `apply` 返回 `application: restart-required` + `from/to`；按钮回到「插件市场更新」而不是「已更新」 |
 
 三个容易踩的点：
 
@@ -236,3 +236,10 @@ pwsh -File verify/self-update-live.ps1   # 自更新端到端：真的下载 + �
 - 另外：`dsh --profile <桌面 profile> --dump-config` 这类操作会被拒绝（`profile "desktop" is managed exclusively by the Electron application`），插件增删仍可走 CLI，但**组合的重载只能靠那个正在运行的宿主自己**。
 
 因此给用户的标准动作是：**改动宿主半 → 重启一次 DSH**；只改客户端半 → 等几秒即可。
+
+**重启助手（v1.1.6 起）**：有待重启的改动时，市场页会亮出一键「重启 DSH」横幅（契约见
+[API-CONTRACT §2.10](API-CONTRACT.md)）。机制是 detached wait-and-relaunch：宿主拿到助手 pid
+才回 200，延迟 900ms 退出；助手等进程**真的死掉**（有界等待 60s，到点放弃、绝不双开）再用原
+`execPath` + `argv` 拉起；客户端探活必须先见到宿主「死过一次」，恢复后才自动刷新页面。
+两条如实的代价：**正在流式输出的回复会被截断**；重启后的进程以 detached 方式拉起，
+**终端 Ctrl+C 打不到它**——要用 DSH 自己的退出方式或 `taskkill` 结束（桌面端直接关窗口）。

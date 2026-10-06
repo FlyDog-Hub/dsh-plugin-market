@@ -164,7 +164,8 @@ if (-not $boundRejected) {
 }
 Ok '版本算术自检通过（1.0.2 +minor → 1.1.0，低位归零；MINOR/PATCH ≥ 100 的撞号被拒绝）'
 
-$libFiles = Get-ChildItem (Join-Path $pkgDir 'lib') -Filter '*.js' | Sort-Object Name
+# .js 与 .cjs 都查：restart-helper.cjs 是重启助手的分离脚本，语法错误要在这里就拦下。
+$libFiles = Get-ChildItem (Join-Path $pkgDir 'lib') | Where-Object { $_.Extension -in '.js', '.cjs' } | Sort-Object Name
 foreach ($file in $libFiles) {
   & $node --check $file.FullName
   if ($LASTEXITCODE -ne 0) { throw "node --check 失败：$($file.Name)" }

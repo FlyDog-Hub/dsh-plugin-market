@@ -130,6 +130,32 @@ check('restart-required 计为成功：装好了待重启不是失败（用户�
   assert.match(source, /report\(\{ ok: outcome\.applied === true/, '行内结果按 applied 计，不按气泡级别')
   assert.match(source, /if \(outcome && outcome\.ok\) ok\+\+; else fail\+\+;/, '批量汇总按 outcome.ok（即 applied）计数')
 })
+check('重启助手：横幅点亮 → POST /restart → 先见过死才自动刷新（不假装重启完成）', () => {
+  // 端点与错误码
+  assert.match(source, /requestJSON\("\/restart", \{ method: "POST"/, '客户端要真的会调 /restart')
+  assert.match(source, /"restart-failed": true/, 'restart-failed 要进错误码表（errorCopy 才有三段式文案）')
+  // 点亮：安装/更新/卸载/开关/自更新回来的 restart-required、requiresRestart 都要接上
+  const lightUps = [...source.matchAll(/noteRestartFrom\(payload\)/g)]
+  assert.ok(lightUps.length >= 4, `各写操作都要点亮重启横幅，当前只有 ${lightUps.length} 处`)
+  assert.match(source, /payload\.application === "restart-required" \|\| payload\.requiresRestart === true/, '点亮条件覆盖两种写法')
+  // 探活回路：宿主死掉期间先记下「见过死」，之后 /status 恢复才刷新页面
+  assert.match(source, /restartSawDownRef\.current = true/, '宿主死掉期间要记下「见过死」')
+  assert.match(source, /if \(restartSawDownRef\.current\)/, '刷新必须以「见过死」为前提')
+  assert.match(source, /window\.location\.reload\(\)/, '宿主回来后要自动恢复页面')
+  assert.match(source, /notice\.restartTimeout/, '等不到宿主要如实提示，不能一直转圈')
+  // 幂等与可定位性
+  assert.match(source, /if \(restart && restart\.phase === "restarting"\) return;/, '重启中要挡掉重复点击')
+  assert.match(source, /dshpm-restartBtn/, '重启按钮要有稳定类名（e2e 用它定位）')
+  // 文案键齐全（zh/en 键集一致性由上面的通用检查兜底，这里点名关键键）
+  for (const key of [
+    'action.restart', 'action.restarting', 'restart.bannerTitle', 'restart.bannerBody',
+    'restart.title', 'notice.restartQueued', 'notice.restartTimeout',
+    'err.restart-failed.title', 'err.restart-failed.why', 'err.restart-failed.next',
+  ]) {
+    assert.ok(zhKeys.has(key), `缺少文案键 ${key}`)
+    assert.ok(enKeys.has(key), `英文缺少文案键 ${key}`)
+  }
+})
 
 // ── 取样式表：模板字面量 var STYLES = `...` ─────────────────────────
 const TICK = String.fromCharCode(96)

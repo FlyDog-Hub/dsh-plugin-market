@@ -197,6 +197,9 @@ window.__ModuleLoader__.load({
         "err.internal.title": "宿主内部出错",
         "err.internal.why": "市场路由在服务端抛出了异常。",
         "err.internal.next": "点「重试」；持续失败请查看宿主日志。",
+        "err.restart-failed.title": "重启没能开始",
+        "err.restart-failed.why": "宿主没能启动重启助手，DSH 还在原来的进程里（没有半途退出）。",
+        "err.restart-failed.next": "看宿主日志里 deepseek-harness-market 的记录；仍不行就手动重启 DSH。",
         "err.aborted.title": "请求已取消",
         "err.aborted.why": "你切换了页签或开始了新的搜索，之前的请求不再需要。",
         "err.aborted.next": "无需处理，重新操作即可。",
@@ -258,6 +261,13 @@ window.__ModuleLoader__.load({
         "notice.selfCurrent": "插件市场已是最新（v{version}）。",
         "notice.selfUpdated": "插件市场已更新到 v{version}；重启 DSH 后新代码才生效。",
         "notice.selfNeedsRestart": "这个按钮要新的宿主半：请重启一次 DSH 再试（客户端半已经生效，宿主半还在进程里缓存着）。",
+        "notice.restartQueued": "DSH 正在重启；宿主回来后页面会自动恢复。",
+        "notice.restartTimeout": "等了一会儿宿主还没回来：手动刷新页面确认，仍不行就自己重启一次 DSH。",
+        "restart.bannerTitle": "有改动待重启生效",
+        "restart.bannerBody": "更新（插件或市场自更新）已经把新代码写到磁盘，但宿主进程还在跑旧代码。点「重启 DSH」让新代码生效。",
+        "restart.title": "立刻重启 DSH：正在流式输出的回复会被截断；桌面上应用窗口会重新打开。",
+        "action.restart": "重启 DSH",
+        "action.restarting": "正在重启…",
         "err.self-update-unavailable.title": "更新通道没有回应",
         "err.self-update-unavailable.why": "jsDelivr 与 GitHub 三个源都没给出可用版本，这台机器可能访问不了它们。",
         "err.self-update-unavailable.next": "稍后重试；也可在终端用 dsh plugin add <Release 附件地址> 手动升级。",
@@ -437,6 +447,9 @@ window.__ModuleLoader__.load({
         "err.internal.title": "The host failed internally",
         "err.internal.why": "The market route threw on the server side.",
         "err.internal.next": "Retry; if it keeps failing, check the host log.",
+        "err.restart-failed.title": "The restart did not start",
+        "err.restart-failed.why": "The host could not launch the restart helper; DSH is still running its original process (it did not exit halfway).",
+        "err.restart-failed.next": "Check the deepseek-harness-market entries in the host log; if it keeps failing, restart DSH yourself.",
         "err.aborted.title": "The request was cancelled",
         "err.aborted.why": "You switched tabs or started a new search, so the earlier request is no longer needed.",
         "err.aborted.next": "Nothing to do; just continue.",
@@ -500,6 +513,13 @@ window.__ModuleLoader__.load({
         "notice.selfCurrent": "The plugin market is up to date (v{version}).",
         "notice.selfUpdated": "The plugin market was updated to v{version}; the new code applies after DSH restarts.",
         "notice.selfNeedsRestart": "This button needs the new Host half: restart DSH once and try again (the client half is already live; the Host half is still cached in the running process).",
+        "notice.restartQueued": "DSH is restarting; the page recovers on its own once the host is back.",
+        "notice.restartTimeout": "The host has not come back yet: refresh the page to check, or restart DSH yourself.",
+        "restart.bannerTitle": "Changes pending a restart",
+        "restart.bannerBody": "An update (a plugin or the market itself) has written the new code to disk, but the host process is still running the old code. Restart DSH to apply it.",
+        "restart.title": "Restart DSH right now: replies still streaming will be cut off, and the desktop app reopens its window.",
+        "action.restart": "Restart DSH",
+        "action.restarting": "Restarting…",
         "err.self-update-unavailable.title": "No update channel answered",
         "err.self-update-unavailable.why": "None of the jsDelivr and GitHub sources returned a usable version; this machine may not reach them.",
         "err.self-update-unavailable.next": "Try again later, or upgrade in a terminal with dsh plugin add <release asset URL>.",
@@ -743,6 +763,9 @@ window.__ModuleLoader__.load({
       },
       applySelfUpdate: function () {
         return requestJSON("/self-update", { method: "POST", body: {} });
+      },
+      restart: function () {
+        return requestJSON("/restart", { method: "POST", body: {} });
       }
     };
 
@@ -766,6 +789,7 @@ window.__ModuleLoader__.load({
       "self-update-unavailable": true,
       "self-update-integrity": true,
       "self-update-download": true,
+      "restart-failed": true,
       "bad-request": true,
       "method-not-allowed": true,
       "not-found": true,
@@ -2322,6 +2346,81 @@ window.__ModuleLoader__.load({
         };
       }, []);
 
+      // ── 重启助手 ── pending：本轮会话里有改动装好待重启；phase：idle / restarting / failed。
+      // 状态放页面内存而不是持久化：重启会把页面带走，「待重启」本来就是一次性的，
+      // 页面刷新后没了就没了——不谎称还在等。
+      var restartState = React.useState(null);
+      var restart = restartState[0];
+      var setRestart = restartState[1];
+      var restartProbeRef = React.useRef(null);
+      var restartSawDownRef = React.useRef(false);
+
+      /** 任何写操作回来 restart-required / requiresRestart，都点亮重启横幅。 */
+      function noteRestartFrom(payload) {
+        if (!payload) return;
+        if (payload.application === "restart-required" || payload.requiresRestart === true) {
+          setRestart(function (previous) {
+            return { pending: true, phase: previous && previous.phase === "restarting" ? "restarting" : "idle" };
+          });
+        }
+      }
+
+      function stopRestartProbe() {
+        if (restartProbeRef.current !== null) {
+          clearInterval(restartProbeRef.current);
+          restartProbeRef.current = null;
+        }
+      }
+
+      /**
+       * 探活回路：宿主退出期间 /status 必然打不通（先见过「死」），宿主回来后
+       * /status 才重新通——那一下才刷新页面。没有「先见过死」这道闸，旧进程
+       * 还没退出时的 200 会被误判成新进程，页面白刷新而重启还没发生。
+       */
+      function beginRestartProbe() {
+        stopRestartProbe();
+        restartSawDownRef.current = false;
+        var deadline = Date.now() + 60000;
+        restartProbeRef.current = setInterval(function () {
+          if (!mountedRef.current) {
+            stopRestartProbe();
+            return;
+          }
+          if (Date.now() >= deadline) {
+            stopRestartProbe();
+            setRestart({ pending: true, phase: "failed" });
+            setNotice({ kind: "warn", text: t("notice.restartTimeout") });
+            return;
+          }
+          api.status().then(function () {
+            if (restartSawDownRef.current) {
+              stopRestartProbe();
+              window.location.reload();
+            }
+          }).catch(function () {
+            // 宿主死掉期间的一切失败都是预期的：这就是「正在重启」的那一下。
+            restartSawDownRef.current = true;
+          });
+        }, 1500);
+      }
+
+      function startRestart() {
+        if (restart && restart.phase === "restarting") return;
+        setRestart({ pending: true, phase: "restarting" });
+        setNotice({ kind: "info", text: t("notice.restartQueued") });
+        api.restart().then(function () {
+          beginRestartProbe();
+        }).catch(function (error) {
+          // 助手没起来：宿主**没有**退出，如实报错并把按钮交还给用户（可以再点一次）。
+          setRestart({ pending: true, phase: "failed" });
+          setNotice({ kind: "error", error: error });
+        });
+      }
+
+      React.useEffect(function () {
+        return function () { stopRestartProbe(); };
+      }, []);
+
       var expandedState = React.useState({});
       var expanded = expandedState[0];
       var setExpanded = expandedState[1];
@@ -2633,6 +2732,7 @@ window.__ModuleLoader__.load({
           }
           setPending(null);
           var outcome = noticeFromResult(payload, "install", label);
+          noteRestartFrom(payload);
           if (!silent) setNotice(outcome);
           // 计成功看 applied（restart-required 也算装上了），不看气泡级别——
           // 否则「装好待重启」的更新会被批量汇成失败（用户截图里的「成功 0、失败 2」）。
@@ -2729,6 +2829,7 @@ window.__ModuleLoader__.load({
           clearJob();
           setConfirming(null);
           setNotice(noticeFromResult(payload, "remove", bundle.name));
+          noteRestartFrom(payload);
           bumpTick();
         }).catch(function (error) {
           if (!mountedRef.current) return;
@@ -2744,6 +2845,7 @@ window.__ModuleLoader__.load({
         api.toggle({ name: bundle.name, enabled: next }).then(function (payload) {
           if (!mountedRef.current) return;
           clearJob();
+          noteRestartFrom(payload);
           setNotice({
             kind: payload && payload.error ? "error" : "success",
             text: next ? t("notice.toggleEnabled", { name: bundle.name }) : t("notice.toggleDisabled", { name: bundle.name })
@@ -2762,9 +2864,10 @@ window.__ModuleLoader__.load({
         var key = "toggle:" + id;
         var next = entry.enabled === false;
         startJob({ key: key, kind: "toggle" });
-        api.toggle({ id: id, enabled: next }).then(function () {
+        api.toggle({ id: id, enabled: next }).then(function (payload) {
           if (!mountedRef.current) return;
           clearJob();
+          noteRestartFrom(payload);
           setNotice({ kind: "success", text: next ? t("notice.toggleEnabled", { name: id }) : t("notice.toggleDisabled", { name: id }) });
           bumpTick();
         }).catch(function (error) {
@@ -2832,6 +2935,7 @@ window.__ModuleLoader__.load({
           var to = payload && payload.to ? payload.to : null;
           // 装完先亮「更新成功」（SELF_DONE_MS 后回 idle），重启前不谎称新代码已生效。
           markSelfDone();
+          noteRestartFrom(payload);
           setNotice({ kind: "success", text: to ? t("notice.selfUpdated", { version: to }) : t("notice.selfCurrent", { version: target }) });
         }).catch(function (error) {
           if (!mountedRef.current) return;
@@ -2998,6 +3102,27 @@ window.__ModuleLoader__.load({
               t("pending.approve")),
             el("button", { type: "button", className: "dshpm-btn dshpm-btn--quiet", onClick: function () { setPending(null); } },
               t("pending.cancel"))))
+          : null,
+        // 重启横幅：有待重启的改动就常驻（回答「为什么还没生效」+ 给一键动作）。
+        // 重启中按钮进入忙碌态；探活回路见 beginRestartProbe——宿主死过一次才刷新页面。
+        restart && restart.pending
+          ? el(Banner, {
+            kind: "warn",
+            title: t("restart.bannerTitle"),
+            body: restart.phase === "restarting"
+              ? t("notice.restartQueued")
+              : t("restart.bannerBody")
+          }, el("div", { className: "dshpm-bannerActions" },
+            el("button", {
+              type: "button",
+              className: "dshpm-btn dshpm-btn--primary dshpm-restartBtn",
+              disabled: restart.phase === "restarting",
+              "aria-busy": restart.phase === "restarting" ? "true" : "false",
+              "data-phase": restart.phase || "idle",
+              title: t("restart.title"),
+              onClick: startRestart
+            }, restart.phase === "restarting" ? el(IconSpinner, { size: 13 }) : el(IconUpgrade, { size: 13 }),
+              restart.phase === "restarting" ? t("action.restarting") : t("action.restart"))))
           : null,
         readOnly ? el(Banner, { kind: "warn", title: t("readonly.title"), body: t("readonly.body") }) : null,
         status.phase === "error"

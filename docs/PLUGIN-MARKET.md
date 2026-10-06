@@ -61,7 +61,7 @@ DeepSeek Harness 的插件就是 Cordis 插件，Web GUI 的插件还必须额�
 | 文案归语言所有 | client 半 zh/en 双语字典，跟随 `ctx.locale` 的当前语言并订阅变化 | `packages/client/AGENTS.md` 的本地化规则（第三方动态包无法使用宿主字典类型，故自带字典） |
 | 安装/卸载走官方 pnpm 路径 | host 半调用 `pluginManager.installBundle/removeBundle/setBundleEnabled/setPluginEnabled`，不自己起 pnpm、不改 profile 文件 | `pluginManager` 服务契约 |
 
-**刻意不做的**：不注册 `settings.section`、不改 profile 的 `cordis.patch.yml`、不实现重启助手、
+**刻意不做的**：不注册 `settings.section`、不改 profile 的 `cordis.patch.yml`、
 不实现 WebDAV/Gist 备份、不做主题市场、不做 giscus 评论。理由是与「在侧边栏装/管插件」这一
 核心闭环无关，且都会显著扩大需要验证的面（见 §7）。
 
@@ -152,9 +152,15 @@ DeepSeek Harness 的插件就是 Cordis 插件，Web GUI 的插件还必须额�
 
 - **只覆盖 Web/桌面 profile**：client 半是 `dsh.client` web 产物，headless profile 里只有
   host 半可用（可被其它消费者以 HTTP 方式调用）。
-- **不做重启助手**：需要重启才生效的变更会如实显示 `application: 'restart-required'`，
-  由用户自己重启（官方 dsh-market 的 detached restart helper 明确不在本次范围内）。
-  自更新装完后同理：按钮回到「插件市场更新」，不会假装已经生效。
+- **重启助手（v1.1.6 起实现，形态是 detached wait-and-relaunch）**：需要重启才生效的变更仍
+  如实显示 `application: 'restart-required'`，但多了一键「重启 DSH」（`POST /plugin-market/restart`，
+  契约见 [API-CONTRACT §2.10](API-CONTRACT.md)）。宿主先 spawn 一个脱离进程的等待助手，**拿到 pid
+  才回 200** 再延迟 900ms 退出；助手等进程真的死掉（有界等待 60s，到点没死就放弃，绝不双开）再用
+  原 `execPath` + argv 拉起；客户端探活必须先见到宿主「死过一次」，回来后才自动刷新页面——
+  没有这道闸，旧进程的 200 会被误判成新进程。如实的代价：截断正在流式输出的回复；重启后的进程
+  由 detached 方式拉起，**终端 Ctrl+C 打不到它**（要用 DSH 自己的退出方式或 taskkill 结束）——
+  两条都写进了按钮 tooltip 与契约，测试见 `verify/restart-helper.test.mjs`（真助手不碰真实 DSH）。
+  自更新装完后同理：按钮回「插件市场更新」，亮的是重启横幅，不假装新代码已生效。
 - **自更新的信任锚是清单哈希，不是独立签名**：路径形状 + `sha256` + 产物自证三道校验
   （新版本 `sha256` 取自 GitHub 附件 `digest`，≤v1.1.5 走 `releases/index.json`）
   能挡住损坏、截断与单点替换，但挡不住「清单与产物一起被换」。要有那个能力就得引入

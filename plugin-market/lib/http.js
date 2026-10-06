@@ -85,6 +85,10 @@ export const ERROR_TEXT = {
     message: '这个操作被宿主拒绝。',
     hint: '这类条目由宿主基础设施管理，请在终端里操作。'
   },
+  'restart-failed': {
+    message: '没能启动重启助手。',
+    hint: '看宿主日志里 deepseek-harness-market 的记录，然后手动重启 DSH。'
+  },
   internal: {
     message: '插件市场内部出错了。',
     hint: '看宿主日志里的 deepseek-harness-market 记录，然后重试。'

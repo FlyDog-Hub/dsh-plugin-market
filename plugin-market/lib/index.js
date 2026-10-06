@@ -2,11 +2,12 @@
  * deepseek-harness-market — HOST 半（Cordis function plugin）。
  *
  * 职责只有一个：把 https://awesome-dsh-plugin.com/plugins.json 这类目录源
- * 变成宿主 HTTP 上的 9 个只读/操作端点，并把宿主可选的 pluginManager 服务桥接出去。
- * 其中 `/self-update` 的 GET/POST 是市场**自身**的升级通道（见 self-update.js）。
+ * 变成宿主 HTTP 上的一组只读/操作端点，并把宿主可选的 pluginManager 服务桥接出去。
+ * 其中 `/self-update` 的 GET/POST 是市场**自身**的升级通道（见 self-update.js），
+ * `/restart` 是重启助手（见 restart.js：分离等待再拉起，把「重启 DSH」变成真动作）。
  *
  * 为什么只注册一条 prefix 路由：宿主对 (kind, path) 的重复注册会 throw，
- * 而七个端点又在同一个前缀下——一条 prefix 路由 + 内部分发是唯一不会互相撞的写法。
+ * 而所有端点又在同一个前缀下——一条 prefix 路由 + 内部分发是唯一不会互相撞的写法。
  */
 
 import { createRequire } from 'node:module'
@@ -30,6 +31,7 @@ import {
   sortPlugins
 } from './catalog.js'
 import { createSelfUpdater } from './self-update.js'
+import { RESTART_EXIT_DELAY_MS, spawnRestartHelper } from './restart.js'
 
 const PLUGIN_NAME = 'deepseek-harness-market'
 /**
@@ -693,6 +695,36 @@ function createHandlers(ctx, catalog, selfUpdate) {
     async selfUpdate(req, res, url) {
       if (String(req.method ?? 'GET').toUpperCase() === 'POST') return applySelfUpdate(req, res)
       return checkSelfUpdate(req, res, url)
+    },
+
+    /**
+     * 契约 §2.10：重启助手。
+     *
+     * 先 spawn 一个 detached 的等待助手，**拿到 pid 才回 200**，然后延迟
+     * RESTART_EXIT_DELAY_MS 让响应落地，最后自己退出。助手等进程真的死掉再用原来的
+     * 命令行拉起（见 restart.js / restart-helper.cjs）。任何一步失败都只报错、不退出——
+     * 「先退出再说」会把用户留在一个没人拉起来的死进程后面。
+     */
+    async restart(req, res) {
+      if (!requireSameOrigin(req, res)) return
+      const outcome = spawnRestartHelper()
+      if (outcome.ok !== true) {
+        sendError(res, 500, 'restart-failed', { message: outcome.message, hint: outcome.hint })
+        return
+      }
+      sendJson(res, 200, {
+        ok: true,
+        pid: outcome.pid,
+        already: outcome.already === true,
+        delayMs: RESTART_EXIT_DELAY_MS
+      })
+      // already = 上一次请求已经安排过助手与退出，这里不再重复安排（两个退出定时器没坏处，
+      // 但两个助手会拉起两个宿主——幂等在 restart.js 里就把第二发挡掉了）。
+      if (outcome.already !== true) {
+        setTimeout(() => {
+          process.exit(0)
+        }, RESTART_EXIT_DELAY_MS)
+      }
     }
   }
 
@@ -778,6 +810,7 @@ function buildRoutes(ctx, catalog, selfUpdate) {
     .on(`${ROUTE_PREFIX}/toggle`, ['POST'], handlers.toggle)
     .on(`${ROUTE_PREFIX}/refresh`, ['POST'], handlers.refresh)
     .on(`${ROUTE_PREFIX}/self-update`, ['GET', 'POST'], handlers.selfUpdate)
+    .on(`${ROUTE_PREFIX}/restart`, ['POST'], handlers.restart)
 }
 
 export const name = PLUGIN_NAME

@@ -432,6 +432,17 @@ try {
     JSON.stringify(rowResults),
   )
 
+  // 重启助手横幅：restart-required 之后必须出现一键「重启 DSH」。**只断言、绝不点击**——
+  // 点了会真的退出这条 e2e 宿主；拉起/拉回的真实生命周期由 verify/restart-helper.test.mjs 覆盖。
+  const restartBtn = await evaluate(client, `(() => { const b = document.querySelector('.dshpm-restartBtn'); return b ? { text: b.textContent.trim(), phase: b.getAttribute('data-phase'), disabled: b.disabled, title: b.getAttribute('title') } : null; })()`)
+  expect(
+    'restart-required 后出现重启横幅与「重启 DSH」按钮（空闲态、可点、tooltip 写明流式会被截断）',
+    !!restartBtn && /重启 DSH/.test(String(restartBtn.text)) && restartBtn.phase === 'idle' && restartBtn.disabled === false && /流式/.test(String(restartBtn.title)),
+    JSON.stringify(restartBtn),
+  )
+  const updatesActionsAfter = await evaluate(client, `document.querySelectorAll('.dshpm-updatesActions button').length`)
+  expect('重启按钮在横幅里、不混进可更新页头部按钮组（那里精确 2 颗）', Number(updatesActionsAfter) === 2, `按钮 ${updatesActionsAfter}`)
+
   const panelOpenHeight = await evaluate(client, `document.querySelector('.dshpm-updatesPanel').getBoundingClientRect().height`)
   expect('可更新页有实际高度（不是空壳）', Number(panelOpenHeight) > 120, `高度 ${panelOpenHeight}`)
 

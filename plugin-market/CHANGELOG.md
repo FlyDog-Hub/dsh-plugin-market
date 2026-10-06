@@ -28,6 +28,18 @@
   `README.md` / `README.zh.md` 换成同一套版式，图片与文档链接改用 `raw.githubusercontent.com` /
   `github.com/blob/main` 绝对地址（npm 包不携带 `docs/assets/`，相对路径会在 npm 页面 404）。包内容、
   安装路径、接口契约均无变化。
+- **重启助手**（此前只有一句「重启 DSH 后生效」的提示）：新端点 `POST /plugin-market/restart`
+  （契约 [API-CONTRACT §2.10](../docs/API-CONTRACT.md)）——宿主先 spawn 一个 **detached** 的
+  等待助手，**拿到 pid 才回 200** 再延迟 900ms 退出；助手等进程真的死掉（有界等待 60s，到点
+  放弃、绝不双开）用原 `execPath` + `argv` 拉起，拉起前删掉 `ELECTRON_RUN_AS_NODE`（否则桌面端
+  变 node 模式黑窗）。实测铁律：**Windows 上非 detached 的子进程会随创建者退出被带走**，所以
+  拉起的子进程必须 `detached`（探针实测 detached 活、非 detached 灭）。客户端：任何写操作回来
+  `restart-required` / `requiresRestart` 就亮一键「重启 DSH」横幅（按钮在横幅里、不进头部按钮组）；
+  探活必须先见到 `/status` **失败过一次**才自动刷新——没有这道闸，旧进程的 200 会被误判成新进程；
+  60s 等不到就如实提示手动刷新。如实体现在 tooltip：流式回复会被截断；重启后的进程 Ctrl+C 打不到
+  （用 DSH 退出方式或 taskkill）。失败码 `restart-failed`（宿主没退出，可原地重试）。回归：
+  新增 `verify/restart-helper.test.mjs`（8 条，含真助手：死父拉起且 env 已清 / 活父绝不拉起）、
+  `client-copy.test.mjs` 重启接线检查、e2e 断言横幅出现（**不点击**——会杀掉验收宿主）。
 
 ## 1.1.5
 

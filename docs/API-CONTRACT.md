@@ -30,7 +30,7 @@
   `Host`、`Origin`、`Cookie`、`Sec-Fetch-Site`（再补上宿主 cookie），所以桌面端写请求天然不带这两个头；
   早期把它当跨站，导致 Electron 里的安装/卸载/开关/刷新全部 403。
   同时 `Content-Type` 必须是 `application/json`，请求体上限 64 KiB。
-- 错误码清单：`bad-request`、`cross-origin`、`method-not-allowed`、`not-found`、`catalog-unavailable`、`catalog-timeout`、`manager-unavailable`、`not-in-catalog`、`install-failed`、`remove-failed`、`toggle-failed`、`not-allowed`、`internal`。
+- 错误码清单：`bad-request`、`cross-origin`、`method-not-allowed`、`not-found`、`catalog-unavailable`、`catalog-timeout`、`manager-unavailable`、`not-in-catalog`、`install-failed`、`remove-failed`、`toggle-failed`、`restart-failed`、`not-allowed`、`internal`。
 - 面向用户的 `message`/`hint` 用中文短句，遵守「发生了什么 / 为什么 / 现在怎么办」。
 
 ## 2. host 路由
@@ -256,6 +256,25 @@ Query 参数（全部可选，未知参数忽略）：
 前两条覆盖 CDN 的标签索引延迟（v1.1.6 起仓库不再存文件，新版本上这两条必然 404、快速失败，实际由第三条供给；顺序保留是为了 ≤v1.1.5 的老版本仍走 CDN 缓存）。因为第 ② 道校验的是**内容**，从哪条路取都不影响安全性。
 只有**传输层失败**（404/超时/断流）才换下一条；一旦**拿到了完整字节**而哈希不符，那是篡改信号：直接以 `self-update-integrity` 失败，**不换来源重试**。
 
+### 2.10 `POST /plugin-market/restart`
+
+一键重启：把「重启 DSH」从一句提示变成真动作（detached wait-and-relaunch，v1.1.6 起）。
+
+请求体：`{}`（无字段）。要求来源判定通过（§1）。
+
+响应（**先 spawn 助手、拿到 pid 才回 200**）：`{ "ok": true, "pid": 12345, "already": false, "delayMs": 900 }`。
+
+- `already: true` = 同一次重启流程里的第二次请求：幂等返回，不再 spawn 第二个助手（双助手 = 双宿主）。
+- `delayMs`：响应落地到进程退出的延迟（`RESTART_EXIT_DELAY_MS`）；客户端在这之后才开始探活。
+- 生命周期（实现见 `lib/restart.js` + `lib/restart-helper.cjs`）：
+  1. 端点 spawn 一个 **detached** 的等待助手（`ELECTRON_RUN_AS_NODE=1`，让它在桌面端也以 node 身份跑脚本）；
+  2. 宿主延迟 `delayMs` 后 `process.exit(0)`；
+  3. 助手每 300ms 轮询宿主 pid，**进程真的死掉才**用原 `execPath` + `argv` 拉起；有界等待 60s，到点没死就放弃——绝不无父拉起（双实例会撞单实例锁与端口）；
+  4. 拉起前删除 `ELECTRON_RUN_AS_NODE`（否则桌面端会以 node 模式黑窗启动），且子进程必须 `detached`——Windows 上非 detached 的子进程会随创建者退出一起被带走（本仓库 `verify/restart-helper.test.mjs` 的探针实测：detached 活、非 detached 灭）。
+- 客户端契约：探活必须先观察到 `/status` **失败一次**（证明旧进程死了），之后恢复成功才 `location.reload()`——没有这道闸，旧进程还没退出时的 200 会被误判成新进程。60s 等不到就如实提示手动刷新，不假装成功。
+- 失败：`500 restart-failed`（助手没起来，宿主**没有**退出，可以原地重试）。
+- 如实的代价：正在流式输出的回复会被截断；重启后的进程由 detached 方式拉起，**终端 Ctrl+C 打不到它**（结束它用 DSH 自己的退出方式或 `taskkill`）。两条都写在按钮 tooltip 与 `docs/RELEASING.md` §5 里。
+
 ## 3. 目录抓取策略（host）
 
 源的选择顺序（每个源只尝试一次，源列表本身就是重试）：
@@ -382,6 +401,7 @@ window.__ModuleLoader__.load({
    - 端到端（`verify/self-update-live.ps1`）：临时把当前版本降到低于最新标签 → 真的下载 → 校验 →
      `pnpm add` 装进 scratch profile（依赖变为 `file:` 指向下载物）→ 结束时按字节还原本地 `package.json`。
 10. **同一路径的 GET 与 POST 必须只有一个路由登记项**：路由表以 path 为键，登记两次会互相覆盖，`GET /self-update` 会变成 405。改这里要重跑 §5 第 9 条的 GET 断言。
-11. **真实浏览器渲染**（`verify/ui-check.ps1` → `verify/market-ui.e2e.mjs`）：侧边栏入口可点开面板；头部只剩「刷新目录」一个按钮；页签栏是 `发现 / 已安装 / 可更新`，有 2 个可更新插件时页签角标显示 `2`；切到「可更新」页能看到两条记录，页头右侧初始是「检查更新」与「插件市场更新」（带 `data-state`；启动时的自动检查没更新时停在 `checking`→`idle`，**首次进入必须是「插件市场更新」而不是「再次检查」**——用户报过的 bug，手动点过之后才到 `ready`）且**两颗都带 `--primary`**、页脚没有独立按钮（`drawerFoot` 为 0）；点「检查更新」后同一颗按钮变成「一键更新（2）」；每行仍有自己的「更新到 x.y.z」；点批量按钮时第一条返回 `restart-required`（**必须计为成功**并显示「重启 DSH 后生效」）、第二条由 CDP 注入 `EPERM` diagnostic 失败——汇总回执必须写「成功 1、失败 1」，失败行必须显示「文件被 DSH 占用」的专用短句，且批量进行中（按钮 `aria-busy`）页面里 `.dshpm-progress` 必须为 0（顶部黑条已删）；卡片/列表行的 `animation-name` 含 `dshpm-rise` 且 `animation-fill-mode` 是 `backwards`；切到 `prefers-reduced-motion: reduce` 后 `animation-name` 变 `none` 而列表行仍然可见（行数不变）。
+11. **真实浏览器渲染**（`verify/ui-check.ps1` → `verify/market-ui.e2e.mjs`）：侧边栏入口可点开面板；头部只剩「刷新目录」一个按钮；页签栏是 `发现 / 已安装 / 可更新`，有 2 个可更新插件时页签角标显示 `2`；切到「可更新」页能看到两条记录，页头右侧初始是「检查更新」与「插件市场更新」（带 `data-state`；启动时的自动检查没更新时停在 `checking`→`idle`，**首次进入必须是「插件市场更新」而不是「再次检查」**——用户报过的 bug，手动点过之后才到 `ready`）且**两颗都带 `--primary`**、页脚没有独立按钮（`drawerFoot` 为 0）；点「检查更新」后同一颗按钮变成「一键更新（2）」；每行仍有自己的「更新到 x.y.z」；点批量按钮时第一条返回 `restart-required`（**必须计为成功**并显示「重启 DSH 后生效」）、第二条由 CDP 注入 `EPERM` diagnostic 失败——汇总回执必须写「成功 1、失败 1」，失败行必须显示「文件被 DSH 占用」的专用短句，且批量进行中（按钮 `aria-busy`）页面里 `.dshpm-progress` 必须为 0（顶部黑条已删）；restart-required 之后必须出现「重启 DSH」横幅按钮（`.dshpm-restartBtn`：空闲态、可点、tooltip 写明流式截断；**e2e 绝不点击它**——会真的退出验收宿主，真实生命周期由第 14 条覆盖）；卡片/列表行的 `animation-name` 含 `dshpm-rise` 且 `animation-fill-mode` 是 `backwards`；切到 `prefers-reduced-motion: reduce` 后 `animation-name` 变 `none` 而列表行仍然可见（行数不变）。
 12. **文案与动效不变量**（`verify/client-copy.test.mjs`）：zh/en 键集完全一致；代码里用到的每个 `t("字面量键")` 都在两种语言里存在；没有僵尸文案键；被引用的 `@keyframes` 都有定义；没有任何升入动画用 `forwards`/`both`；顶部黑条进度条（`.dshpm-progress`）不存在；更新失败的 `EPERM`/拒绝访问必须被 `fileLockedDetail` 识别并切到 `err.file-locked.*`（三处接入：错误气泡、可更新行内、已安装行错误）；回执文案保持精简形态（`已刷新 {count} 个插件` 等）；「检查更新」合并状态机存在（`checkPhase`/`onCheckUpdates`/页脚 `drawerFoot` 已删、插件市场更新按钮同为 primary）；`restart-required` 带 `applied: true` 且行内/批量按 `applied` 计成功（`已是最新` 与裸 `一键更新` 两个键已删除）。
 13. **安装 spec 钉版本**（`verify/install-spec.test.mjs`）：`pinnedNpmSpec` 在装之前被调用、只认「spec === 目录里的裸 npm 名 + 版本像 semver」、钉出 `name@version`；行为上，`POST /install {name}` 与 `{spec:裸名}` 都让假 `installBundle` 收到 `dsh-context@0.63.0`，GitHub 条目的 spec 保持 URL 原样。
+14. **重启助手**（`verify/restart-helper.test.mjs`，离线、不碰真实 DSH）：启动规格必须 `detached` + `windowsHide` + `ELECTRON_RUN_AS_NODE=1`，helper 脚本缺失或参数不合法在 spawn 之前就拒绝；幂等（第二次请求回 `already` 且不再 spawn）；真助手两向——父 pid 已死则拉起且拉起前 env 里 `ELECTRON_RUN_AS_NODE` 已删（子进程必须 `detached` 才能在创建者退出后活着，Windows 实测），父 pid 活着则等满期限放弃、绝不拉起。客户端接线在第 12 条里盯：`POST /restart` 被真的调用、`restart-failed` 进错误码表、各写操作点亮横幅、探活「先见过死」才 `location.reload()`、60s 超时如实提示。
