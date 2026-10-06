@@ -28,6 +28,11 @@
   `README.md` / `README.zh.md` 换成同一套版式，图片与文档链接改用 `raw.githubusercontent.com` /
   `github.com/blob/main` 绝对地址（npm 包不携带 `docs/assets/`，相对路径会在 npm 页面 404）。包内容、
   安装路径、接口契约均无变化。
+- **npm 包移除无人引用的 `assets/` 图片**（仓库清理的一部分）：`plugin-market/assets/` 下的
+  `market-entry.png` / `market-page.png` / `market-updates.png` / `market-header-actions.png`
+  自上一条改用 `raw.githubusercontent.com` 绝对地址后已无任何引用（代码、README、`cordis.patch.yml`
+  都不指向它们），`package.json` 的 `files` 同步去掉 `assets`——npm tarball 从下个版本起不再携带
+  图片，安装与运行行为无任何变化。README 在 npm 页面照常显示（图片走 GitHub 绝对地址）。
 - **README 默认英文，中文走切换**（用户报：README.md 只有中文、切换按钮是坏的）：根
   `README.md` 整篇改为英文（GitHub 默认展示），中文全文挪到根 `README.zh.md`；包内
   `README.md` 同步改英文（npm 默认页也是英文），`README.zh.md` 保持中文。四个文件顶部的

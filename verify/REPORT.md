@@ -357,6 +357,12 @@ E5-env  : ok=True ms=32368（官方源直连仍然超预算 → 保留该条断�
 | `_verify/logs/verify-20261003-214407.summary.json` | 机器可读断言结果 |
 | `_verify/dshhome/profiles/marketcheck` | 临时 profile（独立 DSH_HOME 内） |
 
+> **后记（2026-10-06 仓库清理）**：上表写作 `_verify/logs/…` 的两份证据文件实际一直位于
+> `verify/logs/`（`LogDir` 自初提交起就是 `verify/logs`，表中路径是当时的笔误）；`_verify/logs`
+> 下只剩探针残留（`a.ps1` / `t.*` / `reloadcheck-*` 等），连同 `chaincheck` / `drill` / `mk1` /
+> `probe1` 探路 profile 一并在仓库清理时删除（`drill` 会在下次跑 `drill-boot.ps1` 时自动重建）。
+> `verify/logs` 的证据文件、`marketcheck` profile 全部保留。
+
 ### 9.2 复现命令
 
 ```powershell
@@ -589,6 +595,12 @@ L5  scratch profile 的依赖变成指向下载物的 file:（pnpm 真的装了�
 `plugin-market/assets/market-updates.png` 与 `market-header-actions.png` 是其中两张的压缩版，
 随包发布。第一张里可以看到：头部三个按钮（含角标 2）、提示条与其倒计时线、就地展开的
 可更新列表（两条，各带自己的「更新到 x.y.z」，没有批量按钮）、以及侧边栏入口上的角标。
+
+> **后记（2026-10-06 仓库清理）**：`plugin-market/assets/` 下的两张图（连同早已无引用的
+> `market-entry.png` / `market-page.png`）已从仓库与 npm 包移除——包内 README 自 1.1.6 起
+> 用 `raw.githubusercontent.com` 绝对地址引用 `docs/assets/`，这四张随包图片已无任何引用；
+> `package.json` 的 `files` 同步去掉 `assets`（npm tarball 不再携带图片）。
+> 本节描述的是验收当时的发布状态，截图证据本身仍在 `verify/logs/ui/`。
 
 ### 12.8 未覆盖 / 残留风险（不掩饰）
 

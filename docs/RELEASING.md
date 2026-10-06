@@ -146,7 +146,7 @@ pnpm publish --access public --no-git-checks
 ```
 
 - 发布前确认名字可用：`https://registry.npmjs.org/<name>` 返回 404；
-- `pnpm pack` 后的 tarball 只含 `package/` 下的文件（lib、assets、cordis.patch.yml、README×2、CHANGELOG、LICENSE、package.json）；
+- `pnpm pack` 后的 tarball 只含 `package/` 下的文件（lib、cordis.patch.yml、README×2、CHANGELOG、LICENSE、package.json）；
 - 版本号不可重用、不可覆盖——发错了只能往上加；
 - 发布后立刻真装一次：`dsh plugin --profile <新 profile> add <name>` 或直接 `add <tarball URL>`，启动宿主确认侧边栏底部入口还在。
 
