@@ -104,7 +104,15 @@ export function spawnRestartHelper(options = {}) {
     // 幂等：上一次请求已经把助手安排好了，回 already 而不是再拉一个（双助手 = 双宿主）。
     return { ok: true, pid: state.pid, already: true }
   }
-  const built = buildHelperCommand(options)
+  // 默认参数就是**当前宿主进程自己**：端点调用就是 spawnRestartHelper()（不带参数）。
+  // 这里必须给默认值——早先版本没给，结果真实调用 100% 落进「重启参数不合法」，
+  // 用户实测点「重启 DSH」直接报错（单元测试都显式传参，恰好绕过了这条生产路径）。
+  const built = buildHelperCommand({
+    pid: process.pid,
+    execPath: process.execPath,
+    args: process.argv.slice(1),
+    ...options
+  })
   if (built.ok !== true) {
     return { ok: false, message: built.message, hint: built.hint }
   }

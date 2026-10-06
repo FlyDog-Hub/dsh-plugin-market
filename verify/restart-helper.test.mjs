@@ -118,6 +118,23 @@ check('spawn 直接抛错 → 如实报失败（带宿主原因，不装成功�
   assert.match(result.hint, /boom/, '错误原因要带到 hint 里')
 })
 
+check('生产调用形状：端点是不带参数调用的，默认载荷必须是当前宿主自己（用户实测踩过）', () => {
+  // 回归背景：早先版本没给默认值，真实调用 100% 落进「重启参数不合法」，
+  // 用户点「重启 DSH」直接报错——当时的单元测试全都显式传参，恰好绕过这条路径。
+  const state = {}
+  const seen = {}
+  const fakeSpawn = (file, args) => {
+    seen.file = file
+    seen.payload = JSON.parse(Buffer.from(args[1], 'base64').toString('utf8'))
+    return { pid: 4242, on() {}, unref() {} }
+  }
+  const result = spawnRestartHelper({ state, spawnImpl: fakeSpawn })
+  assert.equal(result.ok, true, JSON.stringify(result))
+  assert.equal(seen.payload.pid, process.pid, 'pid 必须是当前进程')
+  assert.equal(seen.payload.execPath, process.execPath, 'execPath 必须是当前可执行文件')
+  assert.deepEqual(seen.payload.args, process.argv.slice(1), 'args 必须是原命令行（去掉 execPath）')
+})
+
 console.log('\n[2] 真助手行为（node 替身宿主，不碰真实 DSH）')
 
 const tmp = mkdtempSync(join(tmpdir(), 'dshpm-restart-test-'))
