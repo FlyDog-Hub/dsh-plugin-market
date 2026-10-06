@@ -1,13 +1,13 @@
 <h1 align="center">deepseek-harness-market</h1>
 
-<p align="center"><a href="https://github.com/Winnie-0721/dsh-plugin-market/blob/main/plugin-market/README.md">English</a> · <strong>简体中文</strong></p>
+<p align="center"><a href="./README.md">English</a> · <strong>简体中文</strong></p>
 
 <p align="center">
   <a href="https://www.npmjs.com/package/deepseek-harness-market"><img alt="npm version" src="https://img.shields.io/npm/v/deepseek-harness-market?label=npm" /></a>
   <a href="https://www.npmjs.com/package/deepseek-harness-market"><img alt="npm downloads" src="https://img.shields.io/npm/dt/deepseek-harness-market?label=downloads%20total" /></a>
   <a href="https://github.com/Winnie-0721/dsh-plugin-market/releases/latest"><img alt="GitHub release" src="https://img.shields.io/github/v/release/Winnie-0721/dsh-plugin-market" /></a>
   <a href="https://github.com/Winnie-0721/dsh-plugin-market/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/Winnie-0721/dsh-plugin-market" /></a>
-  <a href="https://github.com/Winnie-0721/dsh-plugin-market/blob/main/LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-yellow.svg" /></a>
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-yellow.svg" /></a>
   <a href="https://github.com/deepseek-ai/deepseek-harness"><img alt="DeepSeek Harness 0.2.0-rc.2" src="https://img.shields.io/badge/DeepSeek%20Harness-0.2.0--rc.2-blue" /></a>
 </p>
 
@@ -15,14 +15,14 @@
 <p align="center">侧边栏底部一个入口：浏览、搜索社区目录，安装、更新、启用 / 停用、卸载，全程不离开 GUI。</p>
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/Winnie-0721/dsh-plugin-market/main/docs/assets/market-discover.png" alt="插件市场：发现 / 已安装 / 可更新三个页签、搜索、分类与真实插件卡片" width="880" />
+  <img src="docs/assets/market-discover.png" alt="插件市场：发现 / 已安装 / 可更新三个页签、搜索、分类与真实插件卡片" width="880" />
 </p>
 
 <p align="center">
   <a href="#快速开始"><strong>安装</strong></a> ·
   <a href="#界面速览">界面速览</a> ·
-  <a href="https://github.com/Winnie-0721/dsh-plugin-market/blob/main/docs/PLUGIN-MARKET.md">设计文档</a> ·
-  <a href="https://github.com/Winnie-0721/dsh-plugin-market/blob/main/docs/API-CONTRACT.md">接口契约</a> ·
+  <a href="docs/PLUGIN-MARKET.md">设计文档</a> ·
+  <a href="docs/API-CONTRACT.md">接口契约</a> ·
   <a href="https://github.com/Winnie-0721/dsh-plugin-market/releases/latest">Release</a>
 </p>
 
@@ -39,14 +39,14 @@
 **入口在侧边栏底部、账号行上方，带可更新角标：**
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/Winnie-0721/dsh-plugin-market/main/docs/assets/market-entry-sidebar.png" alt="侧边栏底部的插件市场入口，带更新角标" width="640" />
+  <img src="docs/assets/market-entry-sidebar.png" alt="侧边栏底部的插件市场入口，带更新角标" width="640" />
 </p>
 
 **「可更新」页：合并状态机（一键更新（2）/ 再次检查）、逐条「更新到 x.y.z」、行内结果与汇总回执**
 （下图为验收环境：列表是注入的夹具更新，一条成功待重启、一条占用失败）：
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/Winnie-0721/dsh-plugin-market/main/docs/assets/market-updates.png" alt="可更新页：一键更新、逐条更新到指定版本、行内成功与失败回执" width="880" />
+  <img src="docs/assets/market-updates.png" alt="可更新页：一键更新、逐条更新到指定版本、行内成功与失败回执" width="880" />
 </p>
 
 ## 快速开始
@@ -66,7 +66,7 @@ dsh plugin --profile web add deepseek-harness-market
 
 5. 也可以直接装 [GitHub Release](https://github.com/Winnie-0721/dsh-plugin-market/releases/latest) 附件——每个 Release 页面都给一条可复制的命令。
 
-> 兼容 DSH **0.2.0-rc.2**；npm 包与 GitHub Release 同步发版，版本规则与发布流程见 [docs/RELEASING.md](https://github.com/Winnie-0721/dsh-plugin-market/blob/main/docs/RELEASING.md)。
+> 兼容 DSH **0.2.0-rc.2**；npm 包与 GitHub Release 同步发版，版本规则与发布流程见 [docs/RELEASING.md](docs/RELEASING.md)。
 > 还没有 DSH？`npx @deepseek-ai/dsh web` 起一个本地实例。
 
 ## 它怎么工作
@@ -76,7 +76,7 @@ dsh plugin --profile web add deepseek-harness-market
 - **host 半（仓库进程）**：只 named-export `name` / `inject` / `apply` 的 Cordis function plugin；`ctx.webServer` 注册一条 prefix 路由，`ctx.get('pluginManager')` 可选桥接安装能力。目录抓取、缓存、重试、校验、自更新下载都在这里——**浏览器不碰网络与文件系统**。
 - **client 半（浏览器）**：`lib/client.js` 单文件 bundle，经 `window.__ModuleLoader__.load({ id, factory })` 注册，除 `require("react")` 外零依赖。
 - **席位与声明**：入口注册官方 `sidebar.footer.action`，面板注册 `main` 的 `plugin-market` 键，导航走 `ctx.layout.selectPanel`；`package.json` 声明 `dsh.bundle.patch`（bundle 补丁层）与 `dsh.client`（`platform: web` + `./client` 导出）。
-- **接口是冻结的**：host ↔ client 的端点、响应与错误码以 [docs/API-CONTRACT.md](https://github.com/Winnie-0721/dsh-plugin-market/blob/main/docs/API-CONTRACT.md) 为准，改契约先改文档与回归测试；与官方规范的逐条对照见 [docs/PLUGIN-MARKET.md](https://github.com/Winnie-0721/dsh-plugin-market/blob/main/docs/PLUGIN-MARKET.md)。
+- **接口是冻结的**：host ↔ client 的端点、响应与错误码以 [docs/API-CONTRACT.md](docs/API-CONTRACT.md) 为准，改契约先改文档与回归测试；与官方规范的逐条对照见 [docs/PLUGIN-MARKET.md](docs/PLUGIN-MARKET.md)。
 
 ## 数据来源
 
@@ -88,7 +88,7 @@ dsh plugin --profile web add deepseek-harness-market
 兜底是必要的：DSH 只认 `HTTP(S)_PROXY` 环境变量、不读 Windows 系统代理，而官方源挂在 GitHub Pages 上。
 默认地址可用 `DSHM_REGISTRY_URL` / `DSHM_NPM_MIRROR` 覆盖。
 
-本项目按官方插件规范**重新实现**，参考了 [dsh-market](https://github.com/dsh-market/dsh-market) 的目录来源与产品取舍，但不是它的拷贝：功能面收敛到「在侧边栏装 / 管插件」这一个闭环。
+本仓库按官方插件规范**重新实现**，参考了 [dsh-market](https://github.com/dsh-market/dsh-market) 的目录来源与产品取舍，但不是它的拷贝：功能面收敛到「在侧边栏装 / 管插件」这一个闭环。
 
 ## 安全边界
 
@@ -96,9 +96,9 @@ dsh plugin --profile web add deepseek-harness-market
 - 安装 / 卸载 / 启用 / 停用只走宿主 `pluginManager`——与 `dsh plugin add` 同一条路径、同一套构建脚本审批规则。
 - 写操作只收**同源 POST**（64 KiB 上限），不接受跨源、不拿 GET 改状态。
 - 市场**拒绝卸载自己**。
-- 自更新的信任锚是清单哈希（路径形状 + `sha256` + 产物自证三道校验）：新版本由 GitHub 附件 `digest` 直接给出 `sha256`，老版本走 `index.json`；挡损坏、截断与单点替换，挡不住「清单与产物一起被换」——如实写在 [API-CONTRACT §2.9](https://github.com/Winnie-0721/dsh-plugin-market/blob/main/docs/API-CONTRACT.md)，不冒充独立签名。
+- 自更新的信任锚是清单哈希（路径形状 + `sha256` + 产物自证三道校验）：新版本由 GitHub 附件 `digest` 直接给出 `sha256`，老版本走 `index.json`；挡损坏、截断与单点替换，挡不住「清单与产物一起被换」——如实写在 [API-CONTRACT §2.9](docs/API-CONTRACT.md)，不冒充独立签名。
 
-[设计与安全决定](https://github.com/Winnie-0721/dsh-plugin-market/blob/main/docs/PLUGIN-MARKET.md) · [已知限制](https://github.com/Winnie-0721/dsh-plugin-market/blob/main/docs/PLUGIN-MARKET.md#7-已知限制与后续工作) · [接口契约](https://github.com/Winnie-0721/dsh-plugin-market/blob/main/docs/API-CONTRACT.md)
+[设计与安全决定](docs/PLUGIN-MARKET.md) · [已知限制](docs/PLUGIN-MARKET.md#7-已知限制与后续工作) · [接口契约](docs/API-CONTRACT.md)
 
 ## 开发与验收
 
@@ -115,18 +115,18 @@ pwsh -File scripts\release.ps1 -Bump patch
 ```
 
 回归测试全部放在 `verify/*.test.mjs`（文案键、状态机、安装 spec、自更新通道、来源判定……），发布门禁逐个跑；
-独立验收报告见 [verify/REPORT.md](https://github.com/Winnie-0721/dsh-plugin-market/blob/main/verify/REPORT.md)。
+独立验收报告见 [verify/REPORT.md](verify/REPORT.md)。
 
 ## 仓库结构
 
 | 路径 | 内容 |
 |---|---|
-| [plugin-market/](https://github.com/Winnie-0721/dsh-plugin-market/tree/main/plugin-market) | 插件包本体：host 半（`lib/index.js` / `catalog.js` / `catalog-npm.js` / `http.js` / `self-update.js` / `restart*.js`）+ web client 半（`lib/client.js` 单文件 bundle）+ `cordis.patch.yml` |
-| [docs/API-CONTRACT.md](https://github.com/Winnie-0721/dsh-plugin-market/blob/main/docs/API-CONTRACT.md) | host ↔ client 的冻结接口契约（端点、响应约定、目录抓取策略） |
-| [docs/PLUGIN-MARKET.md](https://github.com/Winnie-0721/dsh-plugin-market/blob/main/docs/PLUGIN-MARKET.md) | 设计与官方规范逐条对照、数据源决策、安全决定、限制、验收结论 |
-| [docs/TEAM-BRIEF.md](https://github.com/Winnie-0721/dsh-plugin-market/blob/main/docs/TEAM-BRIEF.md) | 实现期的环境事实与 API 签名（供协作 / 复现） |
-| [scripts/](https://github.com/Winnie-0721/dsh-plugin-market/tree/main/scripts) | 安装 / 回滚与发布脚本 |
-| [verify/](https://github.com/Winnie-0721/dsh-plugin-market/tree/main/verify) | 回归测试 + 真实浏览器 e2e + 独立验收报告 |
+| [plugin-market/](plugin-market/README.zh.md) | 插件包本体：host 半（`lib/index.js` / `catalog.js` / `catalog-npm.js` / `http.js` / `self-update.js` / `restart*.js`）+ web client 半（`lib/client.js` 单文件 bundle）+ `cordis.patch.yml` |
+| [docs/API-CONTRACT.md](docs/API-CONTRACT.md) | host ↔ client 的冻结接口契约（端点、响应约定、目录抓取策略） |
+| [docs/PLUGIN-MARKET.md](docs/PLUGIN-MARKET.md) | 设计与官方规范逐条对照、数据源决策、安全决定、限制、验收结论 |
+| [docs/TEAM-BRIEF.md](docs/TEAM-BRIEF.md) | 实现期的环境事实与 API 签名（供协作 / 复现） |
+| [scripts/](scripts/install-into-profile.ps1) | 安装 / 回滚与发布脚本 |
+| [verify/](verify/ui-check.ps1) | 回归测试 + 真实浏览器 e2e + 独立验收报告 |
 
 ## 许可
 

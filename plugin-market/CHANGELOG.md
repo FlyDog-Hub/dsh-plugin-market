@@ -28,6 +28,13 @@
   `README.md` / `README.zh.md` 换成同一套版式，图片与文档链接改用 `raw.githubusercontent.com` /
   `github.com/blob/main` 绝对地址（npm 包不携带 `docs/assets/`，相对路径会在 npm 页面 404）。包内容、
   安装路径、接口契约均无变化。
+- **README 默认英文，中文走切换**（用户报：README.md 只有中文、切换按钮是坏的）：根
+  `README.md` 整篇改为英文（GitHub 默认展示），中文全文挪到根 `README.zh.md`；包内
+  `README.md` 同步改英文（npm 默认页也是英文），`README.zh.md` 保持中文。四个文件顶部的
+  语言行统一为「**English** · 简体中文」——当前语言是纯文本、另一语言是可用链接（此前
+  English 链到的 `plugin-market/README.md` 也是中文，点了等于没点）。顺手把包内两份里
+  过期的发布段落（还写着本地打包）与信任锚表述（还写「CDN 清单」）对齐根 README 的
+  CI 迁移后口径，仓库结构表补上 `restart*.js`。
 - **重启助手**（此前只有一句「重启 DSH 后生效」的提示）：新端点 `POST /plugin-market/restart`
   （契约 [API-CONTRACT §2.10](../docs/API-CONTRACT.md)）——宿主先 spawn 一个 **detached** 的
   等待助手，**拿到 pid 才回 200** 再延迟 900ms 退出；助手等进程真的死掉（有界等待 60s，到点
